@@ -1,0 +1,215 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ─── CSS Variables: Light Mode (default) ─── */
+:root,
+[data-theme="light"] {
+  --bg-primary: #f5f0eb;
+  --bg-secondary: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-header: rgba(255, 255, 255, 0.97);
+  --bg-sidebar: #ffffff;
+  --bg-sidebar-hover: rgba(139, 90, 43, 0.06);
+  --bg-sidebar-active: rgba(139, 90, 43, 0.1);
+  --bg-card: #ffffff;
+  --bg-input: rgba(139, 90, 43, 0.04);
+  --bg-hover: rgba(139, 90, 43, 0.05);
+  --bg-table-header: #faf6f1;
+  --bg-stat-icon: 10;
+
+  --text-primary: #2c1e10;
+  --text-secondary: rgba(60, 40, 20, 0.6);
+  --text-tertiary: rgba(60, 40, 20, 0.4);
+  --text-heading: #1a1208;
+  --text-sidebar: #5a4030;
+  --text-sidebar-active: #8B5A2B;
+
+  --border-primary: rgba(139, 90, 43, 0.18);
+  --border-secondary: rgba(139, 90, 43, 0.1);
+  --border-light: rgba(139, 90, 43, 0.08);
+  --border-table: rgba(139, 90, 43, 0.06);
+  --border-sidebar: rgba(139, 90, 43, 0.1);
+
+  --scrollbar-thumb: rgba(139, 90, 43, 0.2);
+  --scrollbar-hover: rgba(139, 90, 43, 0.4);
+
+  --accent: #8B5A2B;
+  --accent-light: #a06a35;
+  --accent-glow: rgba(139, 90, 43, 0.15);
+  --accent-subtle: rgba(139, 90, 43, 0.08);
+  --accent-focus: rgba(139, 90, 43, 0.15);
+
+  --selection-bg: rgba(139, 90, 43, 0.2);
+  --modal-border: rgba(139, 90, 43, 0.15);
+}
+
+/* ─── CSS Variables: Dark Mode ─── */
+[data-theme="dark"] {
+  --bg-primary: #0f0a05;
+  --bg-secondary: rgba(30, 22, 12, 0.9);
+  --bg-elevated: #1e160c;
+  --bg-header: rgba(20, 15, 8, 0.95);
+  --bg-sidebar: #1a1207;
+  --bg-sidebar-hover: rgba(139, 90, 43, 0.12);
+  --bg-sidebar-active: rgba(139, 90, 43, 0.2);
+  --bg-card: rgba(30, 22, 12, 0.8);
+  --bg-input: rgba(139, 90, 43, 0.08);
+  --bg-hover: rgba(139, 90, 43, 0.08);
+  --bg-table-header: rgba(30, 22, 12, 0.8);
+  --bg-stat-icon: 15;
+
+  --text-primary: #e8d5c0;
+  --text-secondary: rgba(193, 142, 83, 0.6);
+  --text-tertiary: rgba(193, 142, 83, 0.4);
+  --text-heading: #e8d5c0;
+  --text-sidebar: rgba(193, 142, 83, 0.65);
+  --text-sidebar-active: #C18E53;
+
+  --border-primary: rgba(139, 90, 43, 0.2);
+  --border-secondary: rgba(139, 90, 43, 0.12);
+  --border-light: rgba(139, 90, 43, 0.15);
+  --border-table: rgba(139, 90, 43, 0.08);
+  --border-sidebar: rgba(139, 90, 43, 0.15);
+
+  --scrollbar-thumb: rgba(139, 90, 43, 0.3);
+  --scrollbar-hover: rgba(139, 90, 43, 0.5);
+
+  --accent: #8B5A2B;
+  --accent-light: #C18E53;
+  --accent-glow: rgba(139, 90, 43, 0.3);
+  --accent-subtle: rgba(139, 90, 43, 0.15);
+  --accent-focus: rgba(139, 90, 43, 0.2);
+
+  --selection-bg: rgba(139, 90, 43, 0.3);
+  --modal-border: rgba(139, 90, 43, 0.2);
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-hover);
+}
+
+/* Ant Design overrides — work for both modes */
+.ant-table-wrapper .ant-table {
+  background: transparent !important;
+}
+
+.ant-table-wrapper .ant-table-thead>tr>th {
+  border-bottom: 1px solid var(--border-secondary) !important;
+}
+
+.ant-table-wrapper .ant-table-tbody>tr>td {
+  border-bottom: 1px solid var(--border-table) !important;
+}
+
+.ant-table-wrapper .ant-table-tbody>tr:hover>td {
+  background: var(--bg-hover) !important;
+}
+
+.ant-input-affix-wrapper:focus,
+.ant-input-affix-wrapper-focused {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 2px var(--accent-focus) !important;
+}
+
+.ant-input:focus,
+.ant-input-focused {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 2px var(--accent-focus) !important;
+}
+
+.ant-modal-content {
+  border: 1px solid var(--modal-border) !important;
+  border-radius: 12px !important;
+}
+
+/* Selection color */
+::selection {
+  background: var(--selection-bg);
+  color: #fff;
+}
+
+/* Smooth transitions */
+a,
+button,
+input,
+.ant-menu-item {
+  transition: all 0.2s ease;
+}
+
+/* Light mode specific overrides */
+[data-theme="light"] .ant-table-wrapper .ant-table {
+  background: #fff !important;
+}
+
+[data-theme="light"] .ant-card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(139, 90, 43, 0.08);
+}
+
+[data-theme="light"] .ant-modal-content {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme="light"] .ant-select-dropdown {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+}
+
+[data-theme="light"] .ant-dropdown {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Sidebar menu overrides for light mode */
+[data-theme="light"] .ant-menu-dark {
+  background: transparent !important;
+}
+
+[data-theme="light"] .ant-menu-dark .ant-menu-item {
+  color: var(--text-sidebar) !important;
+}
+
+[data-theme="light"] .ant-menu-dark .ant-menu-item:hover {
+  background: var(--bg-sidebar-hover) !important;
+  color: var(--text-sidebar-active) !important;
+}
+
+[data-theme="light"] .ant-menu-dark .ant-menu-item-selected {
+  background: var(--bg-sidebar-active) !important;
+  color: var(--text-sidebar-active) !important;
+}
+
+[data-theme="light"] .ant-menu-dark .ant-menu-submenu-title {
+  color: var(--text-sidebar) !important;
+}
+
+[data-theme="light"] .ant-menu-dark .ant-menu-submenu-title:hover {
+  background: var(--bg-sidebar-hover) !important;
+  color: var(--text-sidebar-active) !important;
+}
