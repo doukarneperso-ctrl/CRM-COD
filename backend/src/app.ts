@@ -43,6 +43,7 @@ import { startMaterializedViewWorker } from './workers/materializedView.worker';
 import { startColiixSyncWorker } from './workers/coliixSync.worker';
 
 const app = express();
+app.set('trust proxy', 1); // Trust Railway's load balancer proxy
 const httpServer = http.createServer(app);
 
 // ─── Socket.IO ────────────────────────────────────
