@@ -24,7 +24,8 @@ const router = Router();
 // Initiates OAuth by returning the YouCan auth URL
 router.get('/connect', requireAuth, requirePermission('manage_settings'), async (req: Request, res: Response) => {
     const state = crypto.randomBytes(16).toString('hex');
-    const redirectUri = `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/stores/callback`;
+    const backendUrl = (process.env.BACKEND_URL || 'http://localhost:3001').replace(/\/$/, '');
+    const redirectUri = `${backendUrl}/api/stores/callback`;
     const authUrl = buildOAuthUrl(redirectUri, state);
 
     // Store state + userId in DB so the callback (which runs in a popup without session) can verify
@@ -84,7 +85,8 @@ router.get('/callback', async (req: Request, res: Response) => {
 
         const userId = stateRow.rows[0].user_id;
 
-        const redirectUri = `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/stores/callback`;
+        const backendUrl = (process.env.BACKEND_URL || 'http://localhost:3001').replace(/\/$/, '');
+        const redirectUri = `${backendUrl}/api/stores/callback`;
         logger.info('[YOUCAN OAUTH] Exchanging code for token...', { redirectUri });
 
         const tokenData = await exchangeCode(code, redirectUri);
@@ -120,7 +122,16 @@ router.get('/callback', async (req: Request, res: Response) => {
             response: error.response?.data,
             status: error.response?.status,
         });
-        sendResult(false, error.response?.data?.message || 'Failed to connect store');
+        
+        let errMsg = 'Failed to connect store';
+        if (error.response?.data) {
+            const data = error.response.data;
+            errMsg = data.error_description || data.message || data.error || errMsg;
+        } else if (error.message) {
+            errMsg = error.message;
+        }
+
+        sendResult(false, errMsg);
     }
 });
 
