@@ -99,19 +99,30 @@ router.get('/callback', async (req: Request, res: Response) => {
         const storeId = tokenData.store_id || 'unknown';
         const storeName = tokenData.store_name || 'YouCan Store';
 
-        // Save or update the store record
-        await query(
-            `INSERT INTO stores (name, platform, external_id, access_token, refresh_token, token_expires_at, is_active, created_by, created_at)
-             VALUES ($1, 'youcan', $2, $3, $4, NOW() + INTERVAL '${expiresIn} seconds', true, $5, NOW())
-             ON CONFLICT (platform, external_id) DO UPDATE SET
-               access_token = EXCLUDED.access_token,
-               refresh_token = EXCLUDED.refresh_token,
-               token_expires_at = EXCLUDED.token_expires_at,
-               is_active = true,
-               deleted_at = NULL,
-               updated_at = NOW()`,
-            [storeName, storeId, accessToken, refreshToken, userId]
+        // Check if store exists
+        const existingStore = await query(
+            `SELECT id FROM stores WHERE platform = 'youcan' AND external_id = $1 AND deleted_at IS NULL`,
+            [storeId]
         );
+
+        if (existingStore.rows.length > 0) {
+            await query(
+                `UPDATE stores SET
+                   access_token = $1,
+                   refresh_token = $2,
+                   token_expires_at = NOW() + INTERVAL '${expiresIn} seconds',
+                   is_active = true,
+                   updated_at = NOW()
+                 WHERE id = $3`,
+                [accessToken, refreshToken, existingStore.rows[0].id]
+            );
+        } else {
+            await query(
+                `INSERT INTO stores (name, platform, external_id, access_token, refresh_token, token_expires_at, is_active, created_by, created_at)
+                 VALUES ($1, 'youcan', $2, $3, $4, NOW() + INTERVAL '${expiresIn} seconds', true, $5, NOW())`,
+                [storeName, storeId, accessToken, refreshToken, userId]
+            );
+        }
 
         logger.info('[YOUCAN OAUTH] Store saved successfully', { storeName, storeId });
 
