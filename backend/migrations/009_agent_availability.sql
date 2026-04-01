@@ -6,12 +6,12 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS is_available BOOLEAN DEFAULT true;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS availability_changed_at TIMESTAMP;
 
 -- 2. Seed new permissions
-INSERT INTO permissions (slug, name, description, created_at) VALUES
-    ('bulk_assign_orders',       'Bulk Assign Orders',              'Bulk assign multiple orders to an agent',   NOW()),
-    ('bulk_export_orders',       'Bulk Export Orders',               'Bulk export orders to CSV or courier',      NOW()),
-    ('cancel_confirmed_orders',  'Cancel Confirmed Orders',          'Cancel orders that were already confirmed',  NOW()),
-    ('view_all_orders',          'View All Orders',                  'View all orders (not just assigned)',        NOW()),
-    ('toggle_agent_availability','Toggle Agent Availability',        'Toggle own break/available status',         NOW())
+INSERT INTO permissions (slug, name, module) VALUES
+    ('bulk_assign_orders',       'Bulk Assign Orders',              'orders'),
+    ('bulk_export_orders',       'Bulk Export Orders',              'orders'),
+    ('cancel_confirmed_orders',  'Cancel Confirmed Orders',         'orders'),
+    ('view_all_orders',          'View All Orders',                 'orders'),
+    ('toggle_agent_availability','Toggle Agent Availability',       'users')
 ON CONFLICT (slug) DO NOTHING;
 
 -- 3. Grant view_all_orders to Admin + Manager roles
