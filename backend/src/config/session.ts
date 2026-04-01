@@ -18,6 +18,6 @@ export const sessionMiddleware = session({
         maxAge: env.SESSION_MAX_AGE,
         httpOnly: true,
         secure: env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        sameSite: env.NODE_ENV === 'production' ? 'none' as const : 'lax' as const,
     },
 });
