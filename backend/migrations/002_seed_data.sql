@@ -99,7 +99,7 @@ WHERE r.name = 'Agent'
 -- ─── Default Admin User ──────────────────────────
 -- Password: admin123 (bcrypt hash with 12 rounds)
 INSERT INTO users (username, password_hash, full_name, role_id, status)
-SELECT 'admin', '$2b$12$qyM5yEoLa2ULN43j8qQv2.S49GiCrZVcDD6eiHPLAcWxO4DHRlXli', 'System Administrator', r.id, 'active'
+SELECT 'admin', '$2b$12$oqEykdlFVPmlPHlo0D.qOOufTeNfdmMjluv6YMnl9wAbr0RiMUIfW', 'System Administrator', r.id, 'active'
 FROM roles r WHERE r.name = 'Admin';
 
 -- ─── Status Definitions ──────────────────────────
