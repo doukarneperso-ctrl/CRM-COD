@@ -151,7 +151,7 @@ router.get('/', requireAuth, requirePermission('view_orders'), async (req: Reque
         });
     } catch (error: any) {
         logger.error('List orders error:', error);
-        res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: error.message || 'Failed to list orders' } });
+        res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to list orders' } });
     }
 });
 
