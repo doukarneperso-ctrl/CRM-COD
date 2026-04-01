@@ -52,7 +52,10 @@ initSocket(httpServer, env.FRONTEND_URL);
 // ─── Global Middleware ────────────────────────────
 app.use(helmet());
 app.use(cors({
-    origin: env.FRONTEND_URL,
+    origin: function (origin, callback) {
+        // Dynamically allow the requesting origin for seamless Railway deployments
+        callback(null, origin || true);
+    },
     credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
