@@ -187,6 +187,8 @@ router.get('/queue', requireAuth, async (req: Request, res: Response) => {
             whereExtra += ` AND o.shipping_status = 'returned'`;
         } else if (status === 'cancelled') {
             whereExtra += ` AND o.confirmation_status = 'cancelled'`;
+        } else if (status === 'out_of_stock') {
+            whereExtra += ` AND o.confirmation_status = 'out_of_stock'`;
         } else if (status === 'failed_delivery') {
             whereExtra += ` AND o.confirmation_status = 'confirmed' AND o.shipping_status NOT IN ('not_shipped','pickup_scheduled','in_transit','delivered','returned')`;
         }
@@ -215,6 +217,7 @@ router.get('/queue', requireAuth, async (req: Request, res: Response) => {
                     o.discount, o.discount_type, o.shipping_cost, o.call_attempts,
                     c.full_name as customer_name, c.phone as customer_phone, c.city as customer_city,
                     c.address as customer_address, c.total_orders as customer_order_count, c.id as customer_id,
+                    (SELECT scheduled_at FROM scheduled_callbacks WHERE order_id = o.id ORDER BY created_at DESC LIMIT 1) as callback_scheduled_at,
                     COALESCE(json_agg(
                         json_build_object(
                             'id', oi.id,
@@ -253,6 +256,7 @@ router.get('/queue', requireAuth, async (req: Request, res: Response) => {
                     COUNT(*) FILTER (WHERE shipping_status = 'delivered') as delivered,
                     COUNT(*) FILTER (WHERE shipping_status = 'returned') as returned,
                     COUNT(*) FILTER (WHERE confirmation_status = 'cancelled') as cancelled,
+                    COUNT(*) FILTER (WHERE confirmation_status = 'out_of_stock') as out_of_stock,
                     COUNT(*) FILTER (WHERE confirmation_status = 'confirmed' AND shipping_status NOT IN ('not_shipped','pickup_scheduled','in_transit','delivered','returned')) as failed_delivery
                 FROM orders
                 WHERE assigned_to = $1 AND deleted_at IS NULL`,

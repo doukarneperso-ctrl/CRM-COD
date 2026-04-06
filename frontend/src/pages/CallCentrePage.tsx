@@ -57,6 +57,7 @@ const CONFIRMATION_STATUSES = [
     { key: 'pending', label: '📋 Pending', color: '#faad14', icon: <ClockCircleOutlined /> },
     { key: 'confirmed', label: '✅ Confirmed', color: '#52c41a', icon: <CheckCircleOutlined /> },
     { key: 'rescheduled', label: '🔁 Rescheduled', color: '#1890ff', icon: <ClockCircleOutlined /> },
+    { key: 'out_of_stock', label: '📦 Out of Stock', color: '#fa8c16', icon: <StopOutlined /> },
     { key: 'failed', label: '❌ Failed', color: '#ff4d4f', icon: <CloseCircleOutlined /> },
     { key: 'cancelled', label: '🚫 Cancelled', color: '#8c8c8c', icon: <CloseCircleOutlined /> },
 ];
@@ -728,11 +729,25 @@ export default function CallCentrePage() {
         },
         {
             title: 'STATUS', key: 'status', width: 110,
-            render: (_: any, r: any) => (
-                <Tag color={confirmationColors[r.confirmation_status] || 'default'} style={{ borderRadius: 4, border: 'none', fontSize: 11 }}>
-                    {r.confirmation_status?.replace(/_/g, ' ')}
-                </Tag>
-            ),
+            render: (_: any, r: any) => {
+                const isReportedDueToday = r.confirmation_status === 'reported' && r.callback_scheduled_at &&
+                    dayjs(r.callback_scheduled_at).format('YYYY-MM-DD') === dayjs().format('YYYY-MM-DD');
+                return (
+                    <Tag
+                        color={confirmationColors[r.confirmation_status] || 'default'}
+                        style={{
+                            borderRadius: 4, border: 'none', fontSize: 11,
+                            ...(isReportedDueToday ? {
+                                animation: 'reportedGlow 1.5s ease-in-out infinite',
+                                boxShadow: '0 0 8px rgba(24,144,255,0.6)',
+                            } : {}),
+                        }}
+                    >
+                        {r.confirmation_status?.replace(/_/g, ' ')}
+                        {isReportedDueToday && ' 🔔'}
+                    </Tag>
+                );
+            },
         },
         {
             title: 'ACTIONS', key: 'actions', width: 100, align: 'center' as const,
@@ -1750,6 +1765,12 @@ export default function CallCentrePage() {
             </Modal>
 
             
+            <style>{`
+                @keyframes reportedGlow {
+                    0%, 100% { box-shadow: 0 0 4px rgba(24,144,255,0.3); }
+                    50% { box-shadow: 0 0 14px rgba(24,144,255,0.8), 0 0 20px rgba(24,144,255,0.4); }
+                }
+            `}</style>
         </div>
     );
 }
