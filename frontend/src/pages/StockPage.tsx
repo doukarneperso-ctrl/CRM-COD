@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
     Table, Typography, Card, Row, Col, Input, Tag, Space,
-    InputNumber, Button, Modal, message, Select, Tooltip, Alert, Badge,
+    InputNumber, Button, Modal, message, Select, Tooltip, Badge,
 } from 'antd';
 import {
     AppstoreOutlined, WarningOutlined, StopOutlined,
     PlusOutlined, MinusOutlined, EditOutlined, CheckOutlined, CloseOutlined,
-    ExclamationCircleOutlined, SearchOutlined, ReloadOutlined,
+    SearchOutlined, ReloadOutlined,
     InboxOutlined,
 } from '@ant-design/icons';
 import api from '../api/client';
@@ -108,7 +108,7 @@ export default function StockPage() {
                 return a.localeCompare(b);
             });
         const colors = [...new Set(variants.map((v: any) => v.color).filter(Boolean))] as string[];
-        const hasMatrix = sizes.length > 0 && colors.length > 0;
+        const hasMatrix = sizes.length > 0 || colors.length > 0;
         return { ...p, variants, sizes, colors, hasMatrix };
     });
 
@@ -221,54 +221,84 @@ export default function StockPage() {
         );
     };
 
-    // Render the matrix for a product
     const renderMatrix = (group: any) => {
-        const { sizes, colors, variants } = group;
-        const getVariant = (size: string, color: string) =>
-            variants.find((v: any) => v.size === size && v.color === color);
+        const { variants } = group;
+        // Normalize: if only sizes exist, colors = [''], and vice versa
+        const rawSizes = [...new Set(variants.map((v: any) => v.size).filter(Boolean))] as string[];
+        const rawColors = [...new Set(variants.map((v: any) => v.color).filter(Boolean))] as string[];
+
+        const SIZE_ORDER = ['XS', 'S', 'M/S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL',
+            '34', '36', '38', '40', '42', '44', '46', '48', '50'];
+
+        const sizes = rawSizes.length > 0
+            ? rawSizes.sort((a, b) => {
+                const ia = SIZE_ORDER.indexOf(a.toUpperCase());
+                const ib = SIZE_ORDER.indexOf(b.toUpperCase());
+                if (ia !== -1 && ib !== -1) return ia - ib;
+                if (ia !== -1) return -1;
+                if (ib !== -1) return 1;
+                return a.localeCompare(b);
+            })
+            : [''];  // no sizes — single column
+
+        const colors = rawColors.length > 0 ? rawColors : [''];  // no colors — single row
+
+        const getVariant = (size: string, color: string) => {
+            if (size === '' && color === '') return variants[0];
+            if (size === '') return variants.find((v: any) => v.color === color);
+            if (color === '') return variants.find((v: any) => v.size === size);
+            return variants.find((v: any) => v.size === size && v.color === color);
+        };
+
+        const showSizeHeader = rawSizes.length > 0;
+        const showColorCol = rawColors.length > 0;
 
         return (
             <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
                         <tr>
-                            <th style={{
-                                padding: '8px 12px', textAlign: 'left', color: '#8B5A2B',
-                                borderBottom: '2px solid #f0e6d9', fontWeight: 600, fontSize: 11,
-                                textTransform: 'uppercase', letterSpacing: '0.5px',
-                            }}>
-                                Color / Size
-                            </th>
+                            {showColorCol && (
+                                <th style={{
+                                    padding: '8px 12px', textAlign: 'left', color: '#8B5A2B',
+                                    borderBottom: '2px solid #f0e6d9', fontWeight: 600, fontSize: 11,
+                                    textTransform: 'uppercase', letterSpacing: '0.5px',
+                                }}>
+                                    {showSizeHeader ? 'Color / Size' : 'Color'}
+                                </th>
+                            )}
                             {sizes.map((s: string) => (
-                                <th key={s} style={{
+                                <th key={s || 'std'} style={{
                                     padding: '8px 12px', textAlign: 'center',
                                     color: '#8B5A2B', borderBottom: '2px solid #f0e6d9',
                                     fontWeight: 600, fontSize: 12,
                                 }}>
-                                    {s}
+                                    {s || 'Stock'}
                                 </th>
                             ))}
                         </tr>
                     </thead>
                     <tbody>
                         {colors.map((c: string) => (
-                            <tr key={c} style={{ transition: 'background 0.15s' }}
+                            <tr key={c || 'std'} style={{ transition: 'background 0.15s' }}
                                 onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(139,90,43,0.03)')}
                                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
-                                <td style={{
-                                    padding: '8px 12px', color: '#5a3e1b', fontWeight: 500,
-                                    borderBottom: '1px solid #f5efe8'
-                                }}>{c}</td>
+                                {showColorCol && (
+                                    <td style={{
+                                        padding: '8px 12px', color: '#5a3e1b', fontWeight: 500,
+                                        borderBottom: '1px solid #f5efe8'
+                                    }}>{c || '—'}</td>
+                                )}
                                 {sizes.map((s: string) => {
                                     const v = getVariant(s, c);
                                     if (!v) return (
-                                        <td key={s} style={{
+                                        <td key={s || 'std'} style={{
                                             padding: '6px 12px', textAlign: 'center',
                                             borderBottom: '1px solid #f5efe8', color: '#d9d0c4'
                                         }}>—</td>
                                     );
                                     return (
-                                        <td key={s} style={{
+                                        <td key={s || 'std'} style={{
                                             padding: '6px 12px', textAlign: 'center',
                                             borderBottom: '1px solid #f5efe8',
                                             background: stockBg(parseInt(v.stock) || 0),
