@@ -93,16 +93,29 @@ router.post('/login', validateBody(loginSchema), async (req: Request, res: Respo
 
         logger.info(`✅ User ${user.username} logged in`);
 
-        res.json({
-            success: true,
-            data: {
-                id: user.id,
-                username: user.username,
-                fullName: user.full_name,
-                role: user.role_name,
-                isAvailable: user.is_available !== false,
-                permissions,
-            },
+        // Save session explicitly before responding (prevents race condition)
+        req.session.save((saveErr) => {
+            if (saveErr) {
+                logger.error('Session save error:', saveErr);
+                res.status(500).json({
+                    success: false,
+                    error: { code: 'INTERNAL_ERROR', message: 'Login failed' },
+                });
+                return;
+            }
+
+            res.json({
+                success: true,
+                data: {
+                    id: user.id,
+                    username: user.username,
+                    fullName: user.full_name,
+                    role: user.role_name,
+                    roleId: user.role_id,
+                    isAvailable: user.is_available !== false,
+                    permissions,
+                },
+            });
         });
     } catch (error) {
         logger.error('Login error:', error);

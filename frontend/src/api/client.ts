@@ -11,9 +11,14 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Redirect to login if not authenticated
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
+      // Only redirect if we're not already on login and not during a login request
+      const isLoginRequest = error.config?.url?.includes('/auth/login');
+      const isAuthCheck = error.config?.url?.includes('/auth/me');
+      
+      if (!isLoginRequest && !isAuthCheck && window.location.pathname !== '/login') {
+        // Use soft navigation instead of hard reload to preserve state
+        // The auth store's checkAuth will handle clearing user state
+        window.location.replace('/login');
       }
     }
     return Promise.reject(error);
