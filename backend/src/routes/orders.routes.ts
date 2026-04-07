@@ -1385,9 +1385,14 @@ router.get('/stats/agent-dashboard', requireAuth, async (req: Request, res: Resp
                     COUNT(*) FILTER (WHERE confirmation_status = 'pending') as pending,
                     COUNT(*) FILTER (WHERE confirmation_status = 'cancelled') as cancelled,
                     COUNT(*) FILTER (WHERE confirmation_status = 'unreachable') as unreachable,
+                    COUNT(*) FILTER (WHERE confirmation_status = 'fake') as fake,
+                    COUNT(*) FILTER (WHERE confirmation_status = 'reported') as reported,
+                    COUNT(*) FILTER (WHERE confirmation_status = 'out_of_stock') as out_of_stock,
                     COUNT(*) FILTER (WHERE shipping_status = 'delivered') as delivered,
                     COUNT(*) FILTER (WHERE shipping_status = 'returned') as returned,
-                    COALESCE(SUM(CASE WHEN confirmation_status = 'confirmed' THEN final_amount ELSE 0 END), 0) as revenue
+                    COUNT(*) FILTER (WHERE shipping_status = 'in_transit') as in_transit,
+                    COALESCE(SUM(CASE WHEN confirmation_status = 'confirmed' THEN final_amount ELSE 0 END), 0) as confirmed_revenue,
+                    COALESCE(SUM(CASE WHEN shipping_status = 'delivered' THEN final_amount ELSE 0 END), 0) as delivered_revenue
                  FROM orders
                  WHERE assigned_to = $1
                    AND updated_at >= $2::date
@@ -1414,24 +1419,60 @@ router.get('/stats/agent-dashboard', requireAuth, async (req: Request, res: Resp
         const monthAgo = new Date(today);
         monthAgo.setDate(monthAgo.getDate() - 30);
 
-        const [todayStats, yesterdayStats, weekStats, monthStats] = await Promise.all([
+        // All-time stats
+        const getAllTime = async () => {
+            const result = await query(
+                `SELECT
+                    COUNT(*) as total_orders,
+                    COUNT(*) FILTER (WHERE confirmation_status = 'confirmed') as confirmed,
+                    COUNT(*) FILTER (WHERE confirmation_status = 'pending') as pending,
+                    COUNT(*) FILTER (WHERE confirmation_status = 'cancelled') as cancelled,
+                    COUNT(*) FILTER (WHERE confirmation_status = 'unreachable') as unreachable,
+                    COUNT(*) FILTER (WHERE confirmation_status = 'fake') as fake,
+                    COUNT(*) FILTER (WHERE shipping_status = 'delivered') as delivered,
+                    COUNT(*) FILTER (WHERE shipping_status = 'returned') as returned,
+                    COUNT(*) FILTER (WHERE shipping_status = 'in_transit') as in_transit,
+                    COALESCE(SUM(CASE WHEN confirmation_status = 'confirmed' THEN final_amount ELSE 0 END), 0) as confirmed_revenue,
+                    COALESCE(SUM(CASE WHEN shipping_status = 'delivered' THEN final_amount ELSE 0 END), 0) as delivered_revenue
+                 FROM orders
+                 WHERE assigned_to = $1 AND deleted_at IS NULL`,
+                [agentId]
+            );
+            return result.rows[0];
+        };
+
+        const [todayStats, yesterdayStats, weekStats, monthStats, allTimeStats] = await Promise.all([
             getStats(fmt(today), fmt(today)),
             getStats(yesterdayStr, yesterdayStr),
             getStats(fmt(weekAgo), fmt(today)),
             getStats(fmt(monthAgo), fmt(today)),
+            getAllTime(),
         ]);
 
-        // Commissions
+        // Commissions (richer breakdown)
         const commResult = await query(
             `SELECT
-                COALESCE(SUM(CASE WHEN status = 'approved' THEN amount ELSE 0 END), 0) as earned,
-                COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END), 0) as pending_comm,
-                COUNT(*) FILTER (WHERE status = 'pending') as pending_count
+                COALESCE(SUM(amount) FILTER (WHERE status = 'paid'), 0) as paid,
+                COALESCE(SUM(amount) FILTER (WHERE status IN ('approved', 'new')), 0) as pending_comm,
+                COALESCE(SUM(amount) FILTER (WHERE status = 'rejected'), 0) as deducted,
+                COALESCE(SUM(amount), 0) as total,
+                COUNT(*) FILTER (WHERE status IN ('approved', 'new')) as pending_count
              FROM commissions
              WHERE agent_id = $1 AND deleted_at IS NULL`,
             [agentId]
         );
         const commissions = commResult.rows[0];
+
+        // Courier status breakdown (delivery pipeline)
+        const courierResult = await query(
+            `SELECT courier_status, COUNT(*) as count
+             FROM orders
+             WHERE assigned_to = $1 AND deleted_at IS NULL
+               AND courier_status IS NOT NULL AND courier_status != ''
+             GROUP BY courier_status
+             ORDER BY count DESC`,
+            [agentId]
+        );
 
         // Overall active queue (regardless of date)
         const queueResult = await query(
@@ -1446,10 +1487,10 @@ router.get('/stats/agent-dashboard', requireAuth, async (req: Request, res: Resp
         );
         const queue_stats = queueResult.rows[0];
 
-        // Recent orders (last 10) — join customers table for name/city
+        // Recent orders (last 10)
         const recentResult = await query(
             `SELECT o.id, o.order_number, c.full_name as customer_name, c.city as customer_city,
-                    o.confirmation_status, o.shipping_status, o.final_amount, o.created_at
+                    o.confirmation_status, o.shipping_status, o.courier_status, o.final_amount, o.created_at
              FROM orders o
              LEFT JOIN customers c ON c.id = o.customer_id
              WHERE o.assigned_to = $1 AND o.deleted_at IS NULL
@@ -1457,7 +1498,7 @@ router.get('/stats/agent-dashboard', requireAuth, async (req: Request, res: Resp
             [agentId]
         );
 
-        // Unreachable orders needing follow-up (callback proxy)
+        // Callbacks due
         const callbacksResult = await query(
             `SELECT o.id, o.order_number, c.full_name as customer_name, o.updated_at
              FROM orders o
@@ -1482,17 +1523,22 @@ router.get('/stats/agent-dashboard', requireAuth, async (req: Request, res: Resp
                 yesterday: yesterdayStats,
                 week: weekStats,
                 month: monthStats,
+                allTime: allTimeStats,
                 confirmation_rates: {
                     today: calcRate(todayStats),
                     yesterday: calcRate(yesterdayStats),
                     week: calcRate(weekStats),
                     month: calcRate(monthStats),
+                    allTime: calcRate(allTimeStats),
                 },
                 commissions: {
-                    earned: parseFloat(commissions.earned) || 0,
+                    paid: parseFloat(commissions.paid) || 0,
                     pending: parseFloat(commissions.pending_comm) || 0,
+                    deducted: parseFloat(commissions.deducted) || 0,
+                    total: parseFloat(commissions.total) || 0,
                     pending_count: parseInt(commissions.pending_count) || 0,
                 },
+                courier_statuses: courierResult.rows,
                 queue_stats,
                 recent_orders: recentResult.rows,
                 callbacks: callbacksResult.rows,
