@@ -656,7 +656,7 @@ export default function CallCentrePage() {
         { label: 'Confirmed', value: stats.confirmed || 0, icon: <CheckCircleOutlined />, color: '#52c41a' },
         { label: 'Fake', value: stats.fake || 0, icon: <WarningOutlined />, color: '#fa541c' },
         ...(stats.courier_counts || []).map((c: any) => ({
-            label: c.status, value: c.count, icon: <SendOutlined />, color: '#1890ff'
+            label: c.status || c.courier_status || 'Unknown', value: c.count, icon: <SendOutlined />, color: '#1890ff'
         })).slice(0, 3)
     ];
 
@@ -785,12 +785,15 @@ export default function CallCentrePage() {
 
     const confirmationTabItems = makeTabItems(CONFIRMATION_STATUSES);
     
-    const dynamicShippingStatuses = (tabCounts.courierCounts || []).map((c: any) => ({
-        key: `coliix_${c.status}`,
-        label: `🚚 ${c.status}`,
-        color: '#1890ff',
-        count: parseInt(c.count)
-    }));
+    const dynamicShippingStatuses = (tabCounts.courierCounts || []).map((c: any) => {
+        const statusName = c.status || c.courier_status || 'Unknown';
+        return {
+            key: `coliix_${statusName}`,
+            label: `🚚 ${statusName}`,
+            color: '#1890ff',
+            count: parseInt(c.count)
+        };
+    });
 
     const shippingTabItems = dynamicShippingStatuses.map((tab: any) => ({
         key: tab.key,
