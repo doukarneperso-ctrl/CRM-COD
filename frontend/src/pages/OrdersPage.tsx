@@ -36,6 +36,32 @@ const paymentColors: Record<string, string> = {
     unpaid: 'red', paid: 'green',
 };
 
+// Convert phone to Moroccan local format: +212612345678 → 0612345678
+const formatPhone = (phone: string): string => {
+    if (!phone) return '';
+    let p = phone.replace(/\s+/g, '').replace(/-/g, '');
+    // 00212 → 0 (check first, most specific)
+    if (p.startsWith('00212')) p = '0' + p.slice(5);
+    // +212 → 0
+    else if (p.startsWith('+212')) p = '0' + p.slice(4);
+    // 212 (without +) → 0
+    else if (p.startsWith('212') && p.length >= 12) p = '0' + p.slice(3);
+    // Fix double 0 (e.g. +2120612... → 00612... → 0612...)
+    while (p.startsWith('00')) p = p.slice(1);
+    return p;
+};
+
+// Get WhatsApp link
+const getWhatsAppLink = (phone: string): string => {
+    if (!phone) return '';
+    let p = phone.replace(/\s+/g, '').replace(/-/g, '').replace('+', '');
+    // If starts with 0, convert to 212
+    if (p.startsWith('0')) p = '212' + p.slice(1);
+    // If starts with 00212, remove 00
+    if (p.startsWith('00212')) p = p.slice(2);
+    return `https://wa.me/${p}`;
+};
+
 // Source icon mapping
 const sourceConfig: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
     youcan: { color: '#22c55e', icon: <AppstoreOutlined />, label: 'YouCan' },
@@ -715,9 +741,9 @@ export default function OrdersPage() {
                 <div>
                     <div style={{ fontWeight: 600, fontSize: 12 }}>{r.customer_name}</div>
                     <div style={{ fontSize: 11, opacity: 0.6, display: 'flex', alignItems: 'center', gap: 3 }}>
-                        <PhoneOutlined style={{ fontSize: 10 }} />{r.customer_phone}
+                        <PhoneOutlined style={{ fontSize: 10 }} />{formatPhone(r.customer_phone)}
                         {r.customer_phone && (
-                            <a href={`https://wa.me/${r.customer_phone.replace(/[^0-9]/g, '')}`}
+                            <a href={getWhatsAppLink(r.customer_phone)}
                                 target="_blank" rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
                                 style={{ color: '#25D366', fontSize: 12, lineHeight: 1, marginLeft: 2 }}>
