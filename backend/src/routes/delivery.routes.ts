@@ -343,7 +343,7 @@ router.post('/export/:orderId', requireAuth, requirePermission('export_to_courie
         await query(
             `UPDATE orders
              SET tracking_number = $1, shipping_status = 'pickup_scheduled',
-                 courier_status = 'Nouveau Colis',
+                 courier_status = 'Attente De Ramassage',
                  shipped_at = COALESCE(shipped_at, NOW()), updated_at = NOW()
              WHERE id = $2`,
             [trackingCode, orderId]

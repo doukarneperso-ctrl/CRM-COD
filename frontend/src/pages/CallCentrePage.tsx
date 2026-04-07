@@ -815,7 +815,7 @@ export default function CallCentrePage() {
         // Auto-switch to first tab of newly opened section
         if (key === 'shipping' || (Array.isArray(key) && key.includes('shipping'))) {
             if (!dynamicShippingStatuses.some((s: any) => s.key === activeTab)) {
-                setActiveTab(dynamicShippingStatuses[0]?.key || 'coliix_Nouveau Colis');
+                setActiveTab(dynamicShippingStatuses[0]?.key || 'coliix_Attente De Ramassage');
             }
         } else if (key === 'confirmation' || (Array.isArray(key) && key.includes('confirmation'))) {
             if (!CONFIRMATION_STATUSES.some(s => s.key === activeTab)) {
