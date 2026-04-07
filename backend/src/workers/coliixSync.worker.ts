@@ -23,13 +23,6 @@ function sleep(ms: number) {
 export function startColiixSyncWorker(): void {
     const runColiixSync = async () => {
         try {
-            // Check if Coliix token is configured
-            const tokenResult = await query(`SELECT value FROM system_settings WHERE key = 'coliix_api_token'`);
-            const hasToken = tokenResult.rows.length > 0 && tokenResult.rows[0].value;
-            if (!hasToken && !process.env.COLIIX_API_TOKEN) {
-                // No token configured — skip silently
-                return;
-            }
 
             // Get ALL orders with tracking numbers that are not in a final state
             const ordersResult = await query(
