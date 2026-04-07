@@ -1,26 +1,27 @@
 import axios from 'axios';
 import { query } from '../config/database';
+import logger from '../utils/logger';
 
 const COLIIX_ENDPOINT = 'https://my.coliix.com/aga/seller/api-parcels';
-const FALLBACK_TOKEN = process.env.COLIIX_API_TOKEN || '';
-
-// Cache the token for 5 minutes
-let _cachedToken = '';
-let _cachedAt = 0;
+const FALLBACK_TOKEN = process.env.COLIIX_API_TOKEN || '294f3c-54de6e-d0217d-5b7b7c-ae4fcf';
 
 async function getColiixToken(): Promise<string> {
-    if (_cachedToken && Date.now() - _cachedAt < 5 * 60 * 1000) return _cachedToken;
+    let token = FALLBACK_TOKEN;
     try {
         const result = await query(`SELECT value FROM system_settings WHERE key = 'coliix_api_token'`);
         if (result.rows.length > 0) {
             const val = result.rows[0].value;
-            _cachedToken = typeof val === 'string' ? val : (val?.token || JSON.stringify(val));
-            _cachedToken = _cachedToken.replace(/^"|"$/g, ''); // strip JSON quotes
-            _cachedAt = Date.now();
-            return _cachedToken;
+            let dbToken = typeof val === 'string' ? val : (val?.token || JSON.stringify(val));
+            dbToken = dbToken.replace(/^"|"$/g, ''); // strip JSON quotes
+            if (dbToken && dbToken.trim() !== '') {
+                token = dbToken;
+            }
         }
     } catch { /* fall through */ }
-    return FALLBACK_TOKEN;
+    
+    // Log the first 8 characters of the token safely to verify
+    logger.info(`[COLIIX] Using API Token: ${token.substring(0, 8)}...`);
+    return token;
 }
 
 // ─── Smart Status Detection ──────────────────────
