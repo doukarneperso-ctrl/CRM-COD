@@ -33,13 +33,21 @@ const confirmationColors: Record<string, string> = {
 const formatPhone = (phone: string): string => {
     if (!phone) return '';
     let p = phone.replace(/\s+/g, '').replace(/-/g, '');
+    // 00212 → 0 (check first, most specific)
+    if (p.startsWith('00212')) p = '0' + p.slice(5);
     // +212 → 0
-    if (p.startsWith('+212')) p = '0' + p.slice(4);
+    else if (p.startsWith('+212')) p = '0' + p.slice(4);
     // 212 (without +) → 0
     else if (p.startsWith('212') && p.length >= 12) p = '0' + p.slice(3);
-    // 00212 → 0
-    else if (p.startsWith('00212')) p = '0' + p.slice(5);
+    // Fix double 0 (e.g. +2120612... → 00612... → 0612...)
+    while (p.startsWith('00')) p = p.slice(1);
     return p;
+};
+
+// Check if phone is a valid Moroccan mobile number (starts with 05, 06, or 07)
+const isValidMoroccanPhone = (phone: string): boolean => {
+    const p = formatPhone(phone);
+    return /^0[567]\d{8}$/.test(p);
 };
 
 // Get WhatsApp link (needs international format without +)
@@ -1010,8 +1018,14 @@ export default function CallCentrePage() {
                                         <div>
                                             <div style={{ color: THEME.textSec, fontSize: 9, marginBottom: 1 }}>Phone</div>
                                             <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                                                <Input size="small" value={custPhone} onChange={(e) => setCustPhone(e.target.value)}
-                                                    style={{ fontSize: 11, background: 'transparent', border: `1px solid ${THEME.border}`, flex: 1 }} />
+                                                <Input size="small" value={custPhone}
+                                                    onChange={(e) => setCustPhone(formatPhone(e.target.value))}
+                                                    status={custPhone && !isValidMoroccanPhone(custPhone) ? 'error' : undefined}
+                                                    style={{
+                                                        fontSize: 11, background: 'transparent', flex: 1,
+                                                        border: `1px solid ${custPhone && !isValidMoroccanPhone(custPhone) ? '#ff4d4f' : THEME.border}`,
+                                                        color: custPhone && !isValidMoroccanPhone(custPhone) ? '#ff4d4f' : undefined,
+                                                    }} />
                                                 <Tooltip title="WhatsApp">
                                                     <Button type="text" size="small"
                                                         onClick={() => window.open(getWhatsAppLink(custPhone), '_blank')}
@@ -1023,6 +1037,11 @@ export default function CallCentrePage() {
                                                     onClick={() => { navigator.clipboard.writeText(custPhone); message.success('Copied!'); }}
                                                     style={{ padding: 0, height: 24, width: 24, color: THEME.accentLight }} />
                                             </div>
+                                            {custPhone && !isValidMoroccanPhone(custPhone) && (
+                                                <div style={{ fontSize: 9, color: '#ff4d4f', marginTop: 1 }}>
+                                                    ⚠️ Invalid phone — must start with 05, 06, or 07
+                                                </div>
+                                            )}
                                         </div>
                                         <div>
                                             <div style={{ color: THEME.textSec, fontSize: 9, marginBottom: 1 }}>City</div>
