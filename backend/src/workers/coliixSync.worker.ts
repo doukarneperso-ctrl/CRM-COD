@@ -7,9 +7,8 @@ import { notifyManagers } from '../services/notification.service';
 import { emitDeliveryStatusUpdated } from '../services/socket.service';
 import logger from '../utils/logger';
 
-const BATCH_SIZE = 50;       // Max orders to poll per cycle
-const DELAY_MS = 300;        // Delay between API calls to avoid rate limiting
-const POLL_INTERVAL = '*/2 * * * *'; // Every 2 minutes
+const DELAY_MS = 200;        // Delay between API calls to avoid rate limiting
+const POLL_INTERVAL = '*/30 * * * * *'; // Every 30 seconds (6-field cron = seconds)
 
 function sleep(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -32,17 +31,15 @@ export function startColiixSyncWorker(): void {
                 return;
             }
 
-            // Get all orders with active shipments (pickup or in transit) that have tracking numbers
+            // Get ALL orders with tracking numbers that are not in a final state
             const ordersResult = await query(
                 `SELECT id, tracking_number, shipping_status, courier_status, assigned_to, order_number
                  FROM orders
-                 WHERE shipping_status IN ('not_shipped', 'pickup_scheduled', 'in_transit')
-                   AND tracking_number IS NOT NULL
+                 WHERE tracking_number IS NOT NULL
                    AND tracking_number != ''
+                   AND shipping_status NOT IN ('delivered', 'returned')
                    AND deleted_at IS NULL
-                 ORDER BY shipped_at ASC
-                 LIMIT $1`,
-                [BATCH_SIZE]
+                 ORDER BY shipped_at ASC`
             );
 
             if (ordersResult.rows.length === 0) return;
