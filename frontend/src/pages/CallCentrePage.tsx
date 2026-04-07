@@ -12,7 +12,7 @@ import {
     DeleteOutlined, PlusOutlined, HistoryOutlined, SendOutlined, MinusCircleOutlined,
 } from '@ant-design/icons';
 import { QRCodeSVG } from 'qrcode.react';
-import { useAuthStore } from '../stores/authStore';
+
 import api from '../api/client';
 import { useRealtimeRefresh } from '../hooks/useSocket';
 import dayjs from 'dayjs';
@@ -143,7 +143,7 @@ export default function CallCentrePage() {
     const [historyLoading, setHistoryLoading] = useState(false);
 
     
-    const { hasPermission } = useAuthStore();
+
     const [createOpen, setCreateOpen] = useState(false);
     const [form] = Form.useForm();
     const [createItemSelections, setCreateItemSelections] = useState<Record<number, { productId?: string; size?: string; color?: string }>>({});
@@ -1014,7 +1014,7 @@ export default function CallCentrePage() {
                 destroyOnClose
                 centered
                 styles={{
-                    content: { padding: 0, background: THEME.bg, border: `1px solid ${THEME.border}` },
+                    body: { padding: 0, background: THEME.bg, border: `1px solid ${THEME.border}` },
                     header: { display: 'none' },
                 }}
             >
@@ -1704,7 +1704,7 @@ export default function CallCentrePage() {
                                                                 onChange={(val: string) => {
                                                                     const newSel = { ...sel, size: val, color: undefined };
                                                                     setItemSelections(prev => ({ ...prev, [name]: newSel }));
-                                                                    const match = findMatchingVariant(productId!, val, hasColors ? undefined : null);
+                                                                    const match = findMatchingVariant(productId!, val, hasColors ? undefined : undefined);
                                                                     const items = form.getFieldValue('items');
                                                                     if (match && !hasColors) {
                                                                         items[name].variantId = match.value;

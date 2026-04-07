@@ -60,12 +60,31 @@ const NOTIF_ICONS: Record<string, { icon: string; color: string }> = {
 export default function DashboardLayout() {
     const [collapsed, setCollapsed] = useState(false);
     const [openKeys, setOpenKeys] = useState<string[]>([]);
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const navigate = useNavigate();
     const location = useLocation();
     const { user, logout, hasPermission, isAgent, toggleAvailability } = useAuthStore();
     const { mode, toggle } = useThemeStore();
     const isDark = mode === 'dark';
     const isAdmin = ['admin', 'superadmin'].includes(user?.role?.toLowerCase() || '');
+
+    // Detect mobile viewport
+    useEffect(() => {
+        const handleResize = () => {
+            const mobile = window.innerWidth <= 768;
+            setIsMobile(mobile);
+            if (mobile) setCollapsed(true);
+        };
+        window.addEventListener('resize', handleResize);
+        handleResize();
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    // Close mobile menu on route change
+    useEffect(() => {
+        if (isMobile) setMobileMenuOpen(false);
+    }, [location.pathname, isMobile]);
 
 
     // ─── Agent Activity Tracking ──────────────────────
@@ -372,28 +391,41 @@ export default function DashboardLayout() {
         { key: 'logout', label: 'Logout', icon: <LogoutOutlined />, danger: true },
     ];
 
-    const siderWidth = collapsed ? 72 : 220;
+    const siderWidth = isMobile ? 0 : (collapsed ? 72 : 220);
 
     return (
         <Layout style={{ minHeight: '100vh' }}>
+            {/* Mobile overlay */}
+            {isMobile && mobileMenuOpen && (
+                <div
+                    onClick={() => setMobileMenuOpen(false)}
+                    style={{
+                        position: 'fixed', inset: 0, zIndex: 999,
+                        background: 'rgba(0,0,0,0.5)',
+                        backdropFilter: 'blur(2px)',
+                        transition: 'opacity 0.3s',
+                    }}
+                />
+            )}
+
             {/* Sidebar */}
             <Sider
                 trigger={null}
                 collapsible
-                collapsed={collapsed}
+                collapsed={isMobile ? false : collapsed}
                 width={220}
-                collapsedWidth={72}
+                collapsedWidth={isMobile ? 0 : 72}
                 style={{
                     background: 'var(--bg-sidebar)',
                     borderRight: '1px solid var(--border-sidebar)',
                     overflow: 'auto',
                     height: '100vh',
                     position: 'fixed',
-                    left: 0,
+                    left: isMobile ? (mobileMenuOpen ? 0 : -260) : 0,
                     top: 0,
                     bottom: 0,
-                    zIndex: 100,
-                    transition: 'all 0.2s ease',
+                    zIndex: isMobile ? 1001 : 100,
+                    transition: 'left 0.3s ease, width 0.2s ease',
                 }}
             >
                 {/* Logo */}
@@ -444,6 +476,7 @@ export default function DashboardLayout() {
                         // Don't navigate for parent group keys
                         if (['inventory', 'delivery', 'cash', 'team', 'employers-group'].includes(key)) return;
                         navigate(key);
+                        if (isMobile) setMobileMenuOpen(false);
                     }}
                     items={menuItems}
                     style={{
@@ -499,7 +532,7 @@ export default function DashboardLayout() {
             {/* Main content */}
             <Layout style={{
                 marginLeft: siderWidth,
-                transition: 'margin-left 0.2s ease',
+                transition: 'margin-left 0.3s ease',
                 background: 'var(--bg-primary)',
             }}>
                 {/* Top bar */}
@@ -519,7 +552,13 @@ export default function DashboardLayout() {
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <div
-                            onClick={() => setCollapsed(!collapsed)}
+                            onClick={() => {
+                                if (isMobile) {
+                                    setMobileMenuOpen(!mobileMenuOpen);
+                                } else {
+                                    setCollapsed(!collapsed);
+                                }
+                            }}
                             style={{
                                 cursor: 'pointer',
                                 color: 'var(--accent-light)',
@@ -528,7 +567,7 @@ export default function DashboardLayout() {
                                 alignItems: 'center',
                             }}
                         >
-                            {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                            {(isMobile ? !mobileMenuOpen : collapsed) ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
                         </div>
 
                         {/* Online agents indicators */}
@@ -803,7 +842,7 @@ export default function DashboardLayout() {
 
                 {/* Page content */}
                 <Content style={{
-                    padding: 20,
+                    padding: isMobile ? 8 : 20,
                     minHeight: 'calc(100vh - 48px)',
                     background: 'var(--bg-primary)',
                 }}>
