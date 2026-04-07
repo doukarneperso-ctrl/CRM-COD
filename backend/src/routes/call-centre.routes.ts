@@ -255,7 +255,7 @@ router.get('/queue', requireAuth, async (req: Request, res: Response) => {
                  WHERE o.assigned_to = $1 AND o.deleted_at IS NULL ${whereExtra}`,
                 params
             ),
-            // Status tab counts
+            // Status tab counts (respects date range)
             query(
                 `SELECT
                     COUNT(*) FILTER (WHERE confirmation_status = 'pending') as pending,
@@ -265,16 +265,20 @@ router.get('/queue', requireAuth, async (req: Request, res: Response) => {
                     COUNT(*) FILTER (WHERE confirmation_status = 'cancelled') as cancelled,
                     COUNT(*) FILTER (WHERE confirmation_status = 'out_of_stock') as out_of_stock
                 FROM orders
-                WHERE assigned_to = $1 AND deleted_at IS NULL`,
+                WHERE assigned_to = $1 AND deleted_at IS NULL
+                  ${from ? `AND created_at >= '${from}'` : ''}
+                  ${to ? `AND created_at <= '${to}'::date + interval '1 day'` : ''}`,
                 [userId]
             ),
-            // Dynamic Coliix status counts
+            // Dynamic Coliix status counts (respects date range)
             query(
                 `SELECT courier_status, COUNT(*) as count
                  FROM orders
                  WHERE assigned_to = $1 AND deleted_at IS NULL
                    AND courier_status IS NOT NULL
                    AND courier_status != ''
+                   ${from ? `AND created_at >= '${from}'` : ''}
+                   ${to ? `AND created_at <= '${to}'::date + interval '1 day'` : ''}
                  GROUP BY courier_status`,
                 [userId]
             )
