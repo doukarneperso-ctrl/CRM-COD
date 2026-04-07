@@ -847,11 +847,11 @@ export default function CallCentrePage() {
                 <Button icon={<ReloadOutlined />} onClick={() => { fetchQueue(); fetchStats(); fetchCommissions(); }}>Refresh</Button>
             </div>
 
-            {/* KPI Cards — 5 in one line */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            {/* KPI Cards — responsive grid */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
                 {KPI_CARDS.slice(0, 5).map((c, i) => (
                     <div key={i} style={{
-                        flex: 1, padding: '10px 12px', borderRadius: 8,
+                        flex: '1 1 auto', minWidth: 100, padding: '10px 12px', borderRadius: 8,
                         background: 'var(--bg-elevated)', border: `1px solid ${THEME.border}`,
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
@@ -864,10 +864,10 @@ export default function CallCentrePage() {
             </div>
 
             {/* Commission Cards — separate row */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
                 {KPI_CARDS.slice(5).map((c, i) => (
                     <div key={`k${i}`} style={{
-                        flex: 1, padding: '8px 12px', borderRadius: 8,
+                        flex: '1 1 auto', minWidth: 100, padding: '8px 12px', borderRadius: 8,
                         background: 'var(--bg-elevated)', border: `1px solid ${THEME.border}`,
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
@@ -880,7 +880,7 @@ export default function CallCentrePage() {
                 <div style={{ borderLeft: `1px solid ${THEME.border}`, margin: '4px 0' }} />
                 {COMM_CARDS.map((c, i) => (
                     <div key={`c${i}`} style={{
-                        flex: 1, padding: '8px 12px', borderRadius: 8,
+                        flex: '1 1 auto', minWidth: 100, padding: '8px 12px', borderRadius: 8,
                         background: 'rgba(139, 90, 43, 0.08)', border: `1px solid rgba(139,90,43,0.15)`,
                         borderLeft: `3px solid ${c.color}`,
                     }}>
@@ -999,6 +999,7 @@ export default function CallCentrePage() {
                     rowKey="id"
                     loading={loading}
                     size="small"
+                    scroll={{ x: 'max-content' }}
                     pagination={{ pageSize: 20, showSizeChanger: true }}
                     style={{ padding: '0 0 8px' }}
                 />
@@ -1041,10 +1042,10 @@ export default function CallCentrePage() {
 
                         {/* ── CUSTOMER + QR (Editable) ── */}
                         <div style={sectionStyle}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
                                 <div style={{ flex: 1 }}>
                                     {sectionTitle('👤', 'Customer')}
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 8px', fontSize: 11 }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '4px 8px', fontSize: 11 }}>
                                         <div>
                                             <div style={{ color: THEME.textSec, fontSize: 9, marginBottom: 1 }}>Name</div>
                                             <Input size="small" value={custName} onChange={(e) => setCustName(e.target.value)}

@@ -38,7 +38,7 @@ const confirmColor: Record<string, string> = {
 const MiniStat = ({ label, value, sub, icon, color }: { label: string; value: string | number; sub?: string; icon: React.ReactNode; color: string }) => (
     <div style={{
         background: T.bgInner, border: `1px solid ${T.border}`, borderRadius: 10,
-        padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, flex: 1,
+        padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, flex: '1 1 auto', minWidth: 200,
     }}>
         <div style={{
             width: 36, height: 36, borderRadius: 8, display: 'flex',
@@ -59,7 +59,7 @@ const MiniStat = ({ label, value, sub, icon, color }: { label: string; value: st
 const PeriodCard = ({ label, total, confirmed, rate, color }: { label: string; total: number; confirmed: number; rate: number; color: string }) => (
     <div style={{
         background: T.bgInner, border: `1px solid ${T.border}`, borderRadius: 10,
-        padding: '10px 12px', textAlign: 'center', flex: 1, minWidth: 0,
+        padding: '10px 12px', textAlign: 'center' as const, flex: '1 1 auto', minWidth: 110,
     }}>
         <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 }}>{label}</div>
         <div style={{ fontSize: 22, fontWeight: 800, color: T.text, lineHeight: 1 }}>{total}</div>
@@ -168,7 +168,7 @@ export default function AgentDashboardPage() {
                 <Col xs={24} md={14}>
                     <Card style={cardStyle} styles={{ body: { padding: '14px 16px' } }}>
                         {sectionTitle('📊', 'Orders & Confirmation Rate')}
-                        <div style={{ display: 'flex', gap: 8 }}>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             <PeriodCard label="Today" total={p(today.total_orders)} confirmed={p(today.confirmed)} rate={rates.today} color={rateColor(rates.today)} />
                             <PeriodCard label="This Week" total={p(week.total_orders)} confirmed={p(week.confirmed)} rate={rates.week} color={rateColor(rates.week)} />
                             <PeriodCard label="This Month" total={p(month.total_orders)} confirmed={p(month.confirmed)} rate={rates.month} color={rateColor(rates.month)} />

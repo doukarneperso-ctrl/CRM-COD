@@ -539,18 +539,18 @@ export default function DashboardLayout() {
                 <Header style={{
                     background: 'var(--bg-header)',
                     backdropFilter: 'blur(10px)',
-                    padding: '0 20px',
+                    padding: isMobile ? '0 10px' : '0 20px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     borderBottom: `1px solid var(--border-secondary)`,
-                    height: 48,
+                    height: isMobile ? 44 : 48,
                     position: 'sticky',
                     top: 0,
                     zIndex: 99,
-                    lineHeight: '48px',
+                    lineHeight: isMobile ? '44px' : '48px',
                 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12 }}>
                         <div
                             onClick={() => {
                                 if (isMobile) {
@@ -571,7 +571,7 @@ export default function DashboardLayout() {
                         </div>
 
                         {/* Online agents indicators */}
-                        {isAdmin && onlineAgents.length > 0 && (
+                        {!isMobile && isAdmin && onlineAgents.length > 0 && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
                                 {onlineAgents.map(agent => (
                                     <Tooltip key={agent.id} title={`${agent.full_name} — ${agent.is_online ? 'Online' : 'Offline'}`}>
@@ -587,7 +587,7 @@ export default function DashboardLayout() {
                         )}
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 12 }}>
                         {/* Theme toggle */}
                         <Tooltip title={isDark ? 'Light Mode' : 'Dark Mode'}>
                             <Switch
@@ -663,11 +663,12 @@ export default function DashboardLayout() {
                                         style={{ position: 'fixed', inset: 0, zIndex: 998 }}
                                     />
                                     <div style={{
-                                        position: 'absolute',
-                                        top: 38,
-                                        right: 0,
-                                        width: 360,
-                                        maxHeight: 480,
+                                        position: isMobile ? 'fixed' as const : 'absolute' as const,
+                                        top: isMobile ? 50 : 38,
+                                        right: isMobile ? 8 : 0,
+                                        left: isMobile ? 8 : 'auto',
+                                        width: isMobile ? 'auto' : 360,
+                                        maxHeight: isMobile ? 'calc(100vh - 60px)' : 480,
                                         background: 'var(--bg-primary)',
                                         border: '1px solid var(--border-secondary)',
                                         borderRadius: 12,
@@ -675,7 +676,7 @@ export default function DashboardLayout() {
                                         zIndex: 999,
                                         overflow: 'hidden',
                                         display: 'flex',
-                                        flexDirection: 'column',
+                                        flexDirection: 'column' as const,
                                     }}>
                                         {/* Header */}
                                         <div style={{
@@ -827,14 +828,16 @@ export default function DashboardLayout() {
                                 borderRadius: 6,
                             }}>
                                 <Avatar
-                                    size={28}
+                                    size={isMobile ? 24 : 28}
                                     style={{ background: 'linear-gradient(135deg, #8B5A2B, #C18E53)' }}
                                 >
                                     {user?.fullName?.[0] || 'U'}
                                 </Avatar>
-                                <Text style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 500 }}>
-                                    {user?.fullName}
-                                </Text>
+                                {!isMobile && (
+                                    <Text style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 500 }}>
+                                        {user?.fullName}
+                                    </Text>
+                                )}
                             </div>
                         </Dropdown>
                     </div>
