@@ -111,6 +111,7 @@ export default function CallCentrePage() {
     const [callbackDate, setCallbackDate] = useState<any>(null);
     const [statusLoading, setStatusLoading] = useState('');
     const [editableItems, setEditableItems] = useState<any[]>([]);
+    const [saveChangesLoading, setSaveChangesLoading] = useState(false);
 
     // Editable customer info state
     const [custName, setCustName] = useState('');
@@ -457,6 +458,20 @@ export default function CallCentrePage() {
             message.error(err.response?.data?.error?.message || 'Failed to merge');
         }
         setMergeLoading(false);
+    };
+
+    // ── Standalone save for confirmed orders ──
+    const handleSaveConfirmedChanges = async () => {
+        if (!selectedOrder) return;
+        setSaveChangesLoading(true);
+        try {
+            await saveOrderChanges();
+            message.success('Changes saved successfully!');
+            fetchQueue();
+        } catch {
+            message.error('Failed to save changes');
+        }
+        setSaveChangesLoading(false);
     };
 
     // ── Save order changes before status change ──
@@ -1316,6 +1331,32 @@ export default function CallCentrePage() {
                                 </div>
                             </div>
                         </div>
+
+                        {/* ── SAVE CHANGES — only for confirmed orders with edits ── */}
+                        {selectedOrder.confirmation_status === 'confirmed' && (() => {
+                            const originalPhone = formatPhone(selectedOrder.customer_phone || '');
+                            const originalCity = selectedOrder.customer_city || '';
+                            const originalAddress = selectedOrder.customer_address || '';
+                            const originalName = selectedOrder.customer_name || '';
+                            const isDirty = custPhone !== originalPhone || custCity !== originalCity ||
+                                custAddress !== originalAddress || custName !== originalName ||
+                                deliveryNotes !== (selectedOrder.delivery_notes || '');
+                            return isDirty ? (
+                                <div style={{ marginBottom: 10 }}>
+                                    <Button
+                                        type="primary" block size="middle"
+                                        loading={saveChangesLoading}
+                                        onClick={handleSaveConfirmedChanges}
+                                        style={{
+                                            background: '#1890ff', borderColor: '#1890ff',
+                                            fontWeight: 600, fontSize: 13,
+                                        }}
+                                    >
+                                        💾 Save Changes
+                                    </Button>
+                                </div>
+                            ) : null;
+                        })()}
 
                         {/* ── ACTION BUTTONS — 2 rows of 3 ── */}
                         <Row gutter={[6, 6]}>
