@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Card, Row, Col, Typography, Table, Tag, Progress, Badge } from 'antd';
 import {
-    ShoppingCartOutlined, CheckCircleOutlined, ClockCircleOutlined,
-    PhoneOutlined, TrophyOutlined, TruckOutlined, DollarOutlined,
+    CheckCircleOutlined, ClockCircleOutlined,
+    PhoneOutlined, TrophyOutlined, TruckOutlined,
     CloseCircleOutlined, StopOutlined, WarningOutlined, RiseOutlined,
 } from '@ant-design/icons';
 import api from '../api/client';
@@ -154,14 +154,12 @@ export default function AgentDashboardPage() {
 
             {/* ═══ ROW 1: Quick Stats ═══ */}
             <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-                <MiniStat label="My Queue" value={p(queue.total_assigned)} sub={`${p(queue.pending)} pending`}
-                    icon={<ShoppingCartOutlined />} color={T.accent} />
+                <MiniStat label="Pending Calls" value={p(queue.pending)} sub={`${p(queue.rescheduled)} rescheduled`}
+                    icon={<PhoneOutlined />} color={T.warning} />
                 <MiniStat label="Today's Orders" value={p(today.total_orders)} sub={`${p(today.confirmed)} confirmed`}
                     icon={<ClockCircleOutlined />} color={T.blue} />
-                <MiniStat label="Commissions" value={`${f(comm.paid)} MAD`} sub={`${f(comm.pending)} MAD pending`}
+                <MiniStat label="Commissions Paid" value={`${f(comm.paid)} MAD`} sub={`${f(comm.pending)} MAD pending`}
                     icon={<TrophyOutlined />} color={T.purple} />
-                <MiniStat label="Delivered Revenue" value={`${f(allTime.delivered_revenue)} MAD`} sub="all time"
-                    icon={<DollarOutlined />} color={T.success} />
             </div>
 
             {/* ═══ ROW 2: Orders Assigned + Confirmation Rate ═══ */}
