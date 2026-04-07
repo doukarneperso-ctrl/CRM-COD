@@ -70,12 +70,7 @@ const CONFIRMATION_STATUSES = [
     { key: 'cancelled', label: '🚫 Cancelled', color: '#8c8c8c', icon: <CloseCircleOutlined /> },
 ];
 
-const SHIPPING_STATUSES = [
-    { key: 'in_transit', label: '🚚 In Transit', color: '#1890ff', icon: <SendOutlined /> },
-    { key: 'delivered', label: '✅ Delivered', color: '#52c41a', icon: <TruckOutlined /> },
-    { key: 'returned', label: '📦 Returned', color: '#ff4d4f', icon: <RollbackOutlined /> },
-    { key: 'failed_delivery', label: '⚠️ Failed Delivery', color: '#fa541c', icon: <WarningOutlined /> },
-];
+
 
 // Theme constants using CSS variables
 const THEME = {
@@ -659,10 +654,10 @@ export default function CallCentrePage() {
         { label: 'Total Assigned', value: stats.total_assigned || 0, icon: <ShoppingCartOutlined />, color: '#8B5A2B' },
         { label: 'Pending Calls', value: stats.pending_calls || 0, icon: <PhoneOutlined />, color: '#faad14' },
         { label: 'Confirmed', value: stats.confirmed || 0, icon: <CheckCircleOutlined />, color: '#52c41a' },
-        { label: 'In Transit', value: stats.in_transit || 0, icon: <SendOutlined />, color: '#1890ff' },
-        { label: 'Delivered', value: stats.delivered || 0, icon: <TruckOutlined />, color: '#52c41a' },
-        { label: 'Returned', value: stats.returned || 0, icon: <RollbackOutlined />, color: '#ff4d4f' },
         { label: 'Fake', value: stats.fake || 0, icon: <WarningOutlined />, color: '#fa541c' },
+        ...(stats.courier_counts || []).map((c: any) => ({
+            label: c.status, value: c.count, icon: <SendOutlined />, color: '#1890ff'
+        })).slice(0, 3)
     ];
 
     const COMM_CARDS = [
@@ -738,6 +733,10 @@ export default function CallCentrePage() {
         {
             title: 'STATUS', key: 'status', width: 110,
             render: (_: any, r: any) => {
+                if (r.courier_status) {
+                    return <Tag color="#1890ff" style={{ borderRadius: 4, border: 'none', fontSize: 11 }}>🚚 {r.courier_status}</Tag>;
+                }
+
                 const isReportedDueToday = r.confirmation_status === 'reported' && r.callback_scheduled_at &&
                     dayjs(r.callback_scheduled_at).format('YYYY-MM-DD') === dayjs().format('YYYY-MM-DD');
                 return (
@@ -785,17 +784,35 @@ export default function CallCentrePage() {
     }));
 
     const confirmationTabItems = makeTabItems(CONFIRMATION_STATUSES);
-    const shippingTabItems = makeTabItems(SHIPPING_STATUSES);
+    
+    const dynamicShippingStatuses = (tabCounts.courierCounts || []).map((c: any) => ({
+        key: `coliix_${c.status}`,
+        label: `🚚 ${c.status}`,
+        color: '#1890ff',
+        count: parseInt(c.count)
+    }));
+
+    const shippingTabItems = dynamicShippingStatuses.map((tab: any) => ({
+        key: tab.key,
+        label: (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {tab.label}
+                {tab.count > 0 && (
+                    <Badge count={tab.count} size="small" color={tab.color} />
+                )}
+            </span>
+        ),
+    }));
 
     const confirmationTotalCount = CONFIRMATION_STATUSES.reduce((sum, s) => sum + (tabCounts[s.key] || 0), 0);
-    const shippingTotalCount = SHIPPING_STATUSES.reduce((sum, s) => sum + (tabCounts[s.key] || 0), 0);
+    const shippingTotalCount = dynamicShippingStatuses.reduce((sum: number, s: any) => sum + s.count, 0);
 
     const handleSectionChange = (key: string | string[]) => {
         setActiveSection(key);
         // Auto-switch to first tab of newly opened section
         if (key === 'shipping' || (Array.isArray(key) && key.includes('shipping'))) {
-            if (!SHIPPING_STATUSES.some(s => s.key === activeTab)) {
-                setActiveTab('in_transit');
+            if (!dynamicShippingStatuses.some((s: any) => s.key === activeTab)) {
+                setActiveTab(dynamicShippingStatuses[0]?.key || 'coliix_Nouveau Colis');
             }
         } else if (key === 'confirmation' || (Array.isArray(key) && key.includes('confirmation'))) {
             if (!CONFIRMATION_STATUSES.some(s => s.key === activeTab)) {

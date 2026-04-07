@@ -15,24 +15,38 @@ router.get('/stats', requireAuth, async (req: Request, res: Response) => {
         const dateFrom = from || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
         const dateTo = to || new Date().toISOString().split('T')[0];
 
-        const result = await query(
-            `SELECT
-                COUNT(*) as total_assigned,
-                COUNT(*) FILTER (WHERE o.confirmation_status = 'pending') as pending_calls,
-                COUNT(*) FILTER (WHERE o.confirmation_status = 'confirmed') as confirmed,
-                COUNT(*) FILTER (WHERE o.confirmation_status = 'fake') as fake,
-                COUNT(*) FILTER (WHERE o.shipping_status = 'delivered') as delivered,
-                COUNT(*) FILTER (WHERE o.shipping_status = 'returned') as returned,
-                COUNT(*) FILTER (WHERE o.shipping_status = 'in_transit') as in_transit
-            FROM orders o
-            WHERE o.assigned_to = $1
-              AND o.deleted_at IS NULL
-              AND o.created_at >= $2
-              AND o.created_at <= $3::date + interval '1 day'`,
-            [userId, dateFrom, dateTo]
-        );
+        const [statsResult, courierCountsResult] = await Promise.all([
+            query(
+                `SELECT
+                    COUNT(*) as total_assigned,
+                    COUNT(*) FILTER (WHERE o.confirmation_status = 'pending') as pending_calls,
+                    COUNT(*) FILTER (WHERE o.confirmation_status = 'confirmed') as confirmed,
+                    COUNT(*) FILTER (WHERE o.confirmation_status = 'fake') as fake,
+                    COUNT(*) FILTER (WHERE o.shipping_status = 'delivered') as delivered,
+                    COUNT(*) FILTER (WHERE o.shipping_status = 'returned') as returned,
+                    COUNT(*) FILTER (WHERE o.shipping_status = 'in_transit') as in_transit
+                FROM orders o
+                WHERE o.assigned_to = $1
+                  AND o.deleted_at IS NULL
+                  AND o.created_at >= $2
+                  AND o.created_at <= $3::date + interval '1 day'`,
+                [userId, dateFrom, dateTo]
+            ),
+            query(
+                `SELECT courier_status as status, COUNT(*) as count
+                 FROM orders o
+                 WHERE o.assigned_to = $1
+                   AND o.deleted_at IS NULL
+                   AND o.created_at >= $2
+                   AND o.created_at <= $3::date + interval '1 day'
+                   AND o.courier_status IS NOT NULL
+                   AND o.courier_status != ''
+                 GROUP BY courier_status`,
+                [userId, dateFrom, dateTo]
+            )
+        ]);
 
-        res.json({ success: true, data: result.rows[0] });
+        res.json({ success: true, data: { ...statsResult.rows[0], courier_counts: courierCountsResult.rows } });
     } catch (error) {
         logger.error('Call centre stats error:', error);
         res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to get stats' } });
@@ -178,19 +192,15 @@ router.get('/queue', requireAuth, async (req: Request, res: Response) => {
         } else if (status === 'failed') {
             whereExtra += ` AND o.confirmation_status = 'unreachable'`;
         } else if (status === 'confirmed') {
-            whereExtra += ` AND o.confirmation_status = 'confirmed' AND o.shipping_status NOT IN ('in_transit','delivered','returned')`;
-        } else if (status === 'in_transit') {
-            whereExtra += ` AND o.shipping_status = 'in_transit'`;
-        } else if (status === 'delivered') {
-            whereExtra += ` AND o.shipping_status = 'delivered'`;
-        } else if (status === 'returned') {
-            whereExtra += ` AND o.shipping_status = 'returned'`;
+            whereExtra += ` AND o.confirmation_status = 'confirmed' AND (o.courier_status IS NULL OR o.courier_status = '')`;
+        } else if (status.startsWith('coliix_')) {
+            whereExtra += ` AND o.courier_status = $${idx}`;
+            params.push(status.replace('coliix_', ''));
+            idx++;
         } else if (status === 'cancelled') {
             whereExtra += ` AND o.confirmation_status = 'cancelled'`;
         } else if (status === 'out_of_stock') {
             whereExtra += ` AND o.confirmation_status = 'out_of_stock'`;
-        } else if (status === 'failed_delivery') {
-            whereExtra += ` AND o.confirmation_status = 'confirmed' AND o.shipping_status NOT IN ('not_shipped','pickup_scheduled','in_transit','delivered','returned')`;
         }
 
         if (search) {
@@ -209,7 +219,7 @@ router.get('/queue', requireAuth, async (req: Request, res: Response) => {
             idx++;
         }
 
-        const [dataResult, countResult, tabCounts, breakdownResult] = await Promise.all([
+        const [dataResult, countResult, countsResult, courierCountsResult] = await Promise.all([
             query(
                 `SELECT
                     o.id, o.order_number, o.confirmation_status, o.shipping_status, o.courier_status,
@@ -251,37 +261,33 @@ router.get('/queue', requireAuth, async (req: Request, res: Response) => {
                     COUNT(*) FILTER (WHERE confirmation_status = 'pending') as pending,
                     COUNT(*) FILTER (WHERE confirmation_status = 'reported') as rescheduled,
                     COUNT(*) FILTER (WHERE confirmation_status = 'unreachable') as failed,
-                    COUNT(*) FILTER (WHERE confirmation_status = 'confirmed' AND shipping_status NOT IN ('in_transit','delivered','returned')) as confirmed,
-                    COUNT(*) FILTER (WHERE shipping_status = 'in_transit') as in_transit,
-                    COUNT(*) FILTER (WHERE shipping_status = 'delivered') as delivered,
-                    COUNT(*) FILTER (WHERE shipping_status = 'returned') as returned,
+                    COUNT(*) FILTER (WHERE confirmation_status = 'confirmed' AND (courier_status IS NULL OR courier_status = '')) as confirmed,
                     COUNT(*) FILTER (WHERE confirmation_status = 'cancelled') as cancelled,
-                    COUNT(*) FILTER (WHERE confirmation_status = 'out_of_stock') as out_of_stock,
-                    COUNT(*) FILTER (WHERE confirmation_status = 'confirmed' AND shipping_status NOT IN ('not_shipped','pickup_scheduled','in_transit','delivered','returned')) as failed_delivery
+                    COUNT(*) FILTER (WHERE confirmation_status = 'out_of_stock') as out_of_stock
                 FROM orders
                 WHERE assigned_to = $1 AND deleted_at IS NULL`,
                 [userId]
             ),
-            // Failed delivery breakdown by courier_status (for clickable status chips)
+            // Dynamic Coliix status counts
             query(
                 `SELECT courier_status, COUNT(*) as count
                  FROM orders
                  WHERE assigned_to = $1 AND deleted_at IS NULL
-                   AND confirmation_status = 'confirmed'
-                   AND shipping_status NOT IN ('not_shipped','pickup_scheduled','in_transit','delivered','returned')
                    AND courier_status IS NOT NULL
-                 GROUP BY courier_status
-                 ORDER BY count DESC`,
+                   AND courier_status != ''
+                 GROUP BY courier_status`,
                 [userId]
-            ),
+            )
         ]);
+
+        const tabCounts = countsResult.rows[0];
+        const courierCounts = courierCountsResult.rows;
 
         res.json({
             success: true,
             data: dataResult.rows,
             pagination: paginationMeta(parseInt(countResult.rows[0].count), pagination),
-            tabCounts: tabCounts.rows[0],
-            failedDeliveryBreakdown: breakdownResult.rows,
+            tabCounts: { ...tabCounts, courierCounts }
         });
     } catch (error) {
         logger.error('Call centre queue error:', error);
