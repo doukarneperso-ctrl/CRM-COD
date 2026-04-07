@@ -276,7 +276,24 @@ router.post('/export/:orderId', requireAuth, requirePermission('export_to_courie
         const orderResult = await query(
             `SELECT o.id, o.final_amount, o.delivery_notes, o.call_notes, o.city, o.tracking_number,
                     c.full_name as customer_name, c.phone as customer_phone, c.address as customer_address, c.city as customer_city,
-                    STRING_AGG(COALESCE(p.name, oi.product_name), ', ') as merchandise,
+                    STRING_AGG(
+                        TRIM(
+                            COALESCE(p.name, oi.product_name, 'Merchandise') ||
+                            CASE
+                                WHEN pv.color IS NOT NULL AND pv.size IS NOT NULL
+                                    THEN ' ' || pv.color || '(' || pv.size || ')'
+                                WHEN pv.color IS NOT NULL
+                                    THEN ' ' || pv.color
+                                WHEN pv.size IS NOT NULL
+                                    THEN '(' || pv.size || ')'
+                                WHEN oi.variant_info IS NOT NULL AND oi.variant_info != ''
+                                    THEN ' ' || oi.variant_info
+                                ELSE ''
+                            END ||
+                            CASE WHEN oi.quantity > 1 THEN ' x' || oi.quantity ELSE '' END
+                        ),
+                        ', '
+                    ) as merchandise,
                     SUM(oi.quantity) as total_qty
              FROM orders o
              LEFT JOIN customers c ON c.id = o.customer_id
@@ -314,7 +331,7 @@ router.post('/export/:orderId', requireAuth, requirePermission('export_to_courie
         const trackingCode = await exportOrder({
             name: order.customer_name,
             phone: order.customer_phone,
-            merchandise: order.merchandise || order.product_names || 'Merchandise',
+            merchandise: order.merchandise || 'Merchandise',
             merchandise_qty: parseInt(order.total_qty) || 1,
             ville: order.customer_city || order.city || '',
             adresse: order.customer_address || '',
