@@ -53,16 +53,18 @@ export default function AgentDashboardPage() {
     const rates = data.confirmation_rates || {};
     const comm = data.commissions || {};
 
+    const queue = data.queue_stats || {};
+
     const kpis = [
         {
-            title: "Today's Orders", value: parseInt(today.total_orders) || 0,
+            title: "My Work Queue", value: parseInt(queue.total_assigned) || 0,
             icon: <ShoppingCartOutlined />, color: '#C18E53',
-            sub: `${parseInt(today.confirmed) || 0} confirmed`,
+            sub: 'total assigned orders',
         },
         {
-            title: 'Pending', value: parseInt(today.pending) || 0,
+            title: 'Pending Queue', value: parseInt(queue.pending) || 0,
             icon: <ClockCircleOutlined />, color: '#faad14',
-            sub: 'awaiting confirmation',
+            sub: 'needs confirmation',
         },
         {
             title: 'Commissions', value: `${comm.earned.toLocaleString()} MAD`,

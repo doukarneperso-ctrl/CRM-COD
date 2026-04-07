@@ -1390,8 +1390,8 @@ router.get('/stats/agent-dashboard', requireAuth, async (req: Request, res: Resp
                     COALESCE(SUM(CASE WHEN confirmation_status = 'confirmed' THEN final_amount ELSE 0 END), 0) as revenue
                  FROM orders
                  WHERE assigned_to = $1
-                   AND created_at >= $2::date
-                   AND created_at < ($3::date + interval '1 day')
+                   AND updated_at >= $2::date
+                   AND updated_at < ($3::date + interval '1 day')
                    AND deleted_at IS NULL`,
                 [agentId, fromDate, toDate]
             );
@@ -1432,6 +1432,19 @@ router.get('/stats/agent-dashboard', requireAuth, async (req: Request, res: Resp
             [agentId]
         );
         const commissions = commResult.rows[0];
+
+        // Overall active queue (regardless of date)
+        const queueResult = await query(
+            `SELECT
+                COUNT(*) as total_assigned,
+                COUNT(*) FILTER (WHERE confirmation_status = 'pending') as pending,
+                COUNT(*) FILTER (WHERE confirmation_status = 'reported') as rescheduled
+             FROM orders
+             WHERE assigned_to = $1 AND deleted_at IS NULL
+               AND (confirmation_status IN ('pending', 'reported') OR shipping_status = 'not_shipped')`,
+            [agentId]
+        );
+        const queue_stats = queueResult.rows[0];
 
         // Recent orders (last 10) — join customers table for name/city
         const recentResult = await query(
@@ -1480,6 +1493,7 @@ router.get('/stats/agent-dashboard', requireAuth, async (req: Request, res: Resp
                     pending: parseFloat(commissions.pending_comm) || 0,
                     pending_count: parseInt(commissions.pending_count) || 0,
                 },
+                queue_stats,
                 recent_orders: recentResult.rows,
                 callbacks: callbacksResult.rows,
             },
