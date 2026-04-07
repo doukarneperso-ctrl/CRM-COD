@@ -21,7 +21,7 @@ function sleep(ms: number) {
  * Triggers side effects: commissions, stock restore, notifications.
  */
 export function startColiixSyncWorker(): void {
-    cron.schedule(POLL_INTERVAL, async () => {
+    const runColiixSync = async () => {
         try {
             // Check if Coliix token is configured
             const tokenResult = await query(`SELECT value FROM system_settings WHERE key = 'coliix_api_token'`);
@@ -174,7 +174,13 @@ export function startColiixSyncWorker(): void {
         } catch (err) {
             logger.error('[COLIIX SYNC WORKER] Fatal error:', err);
         }
-    });
+    };
 
-    logger.info('[WORKER] Coliix status sync worker started (every 5 min)');
+    // Run once immediately
+    runColiixSync();
+
+    // Then schedule
+    cron.schedule(POLL_INTERVAL, runColiixSync);
+
+    logger.info('[WORKER] Coliix status sync worker started (every 30 seconds)');
 }
