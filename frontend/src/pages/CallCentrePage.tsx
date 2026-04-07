@@ -1122,15 +1122,24 @@ export default function CallCentrePage() {
                                     )}
                                 </div>
                                 {/* QR Code */}
-                                {custPhone && (
-                                    <div style={{
-                                        background: '#fff', borderRadius: 6, padding: 4,
-                                        display: 'flex', flexDirection: 'column', alignItems: 'center', marginLeft: 10,
-                                    }}>
-                                        <QRCodeSVG value={`tel:${custPhone}`} size={64} />
-                                        <div style={{ fontSize: 8, color: '#666', marginTop: 2 }}>Scan to call</div>
-                                    </div>
-                                )}
+                                {custPhone && (() => {
+                                    // Convert to international format for QR tel: URI
+                                    let intlPhone = custPhone.replace(/[\s\-\(\)]/g, '');
+                                    if (intlPhone.startsWith('0')) {
+                                        intlPhone = '+212' + intlPhone.substring(1);
+                                    } else if (!intlPhone.startsWith('+')) {
+                                        intlPhone = '+' + intlPhone;
+                                    }
+                                    return (
+                                        <div style={{
+                                            background: '#fff', borderRadius: 6, padding: 4,
+                                            display: 'flex', flexDirection: 'column', alignItems: 'center', marginLeft: 10,
+                                        }}>
+                                            <QRCodeSVG value={`tel:${intlPhone}`} size={64} />
+                                            <div style={{ fontSize: 8, color: '#666', marginTop: 2 }}>Scan to call</div>
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         </div>
 
