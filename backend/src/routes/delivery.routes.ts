@@ -398,6 +398,83 @@ router.get('/track/:code', requireAuth, async (req: Request, res: Response) => {
     }
 });
 
+// ─── POST /api/delivery/sync-all ───────────────────
+// Manually trigger a full Coliix status sync for all active shipments
+router.post('/sync-all', requireAuth, requirePermission('manage_settings'), async (_req: Request, res: Response) => {
+    try {
+        const ordersResult = await query(
+            `SELECT id, tracking_number, shipping_status, courier_status, assigned_to, order_number
+             FROM orders
+             WHERE tracking_number IS NOT NULL
+               AND tracking_number != ''
+               AND shipping_status NOT IN ('delivered', 'returned')
+               AND deleted_at IS NULL
+             ORDER BY shipped_at ASC`
+        );
+
+        if (ordersResult.rows.length === 0) {
+            res.json({ success: true, message: 'No active shipments to sync', updated: 0 });
+            return;
+        }
+
+        let updated = 0;
+        let errors = 0;
+
+        for (const order of ordersResult.rows) {
+            try {
+                const result = await trackOrder(order.tracking_number);
+                if (!result.state) continue;
+
+                const crmStatus = detectCrmStatus(result.state);
+                const courierChanged = result.state !== order.courier_status;
+                const shippingChanged = crmStatus && crmStatus !== order.shipping_status;
+
+                if (!courierChanged && !shippingChanged) continue;
+
+                const fields: string[] = ['updated_at = NOW()'];
+                const params: any[] = [];
+                let idx = 1;
+
+                if (courierChanged) {
+                    fields.push(`courier_status = $${idx}`);
+                    params.push(result.state);
+                    idx++;
+                    fields.push('courier_status_at = NOW()');
+                }
+                if (shippingChanged && crmStatus) {
+                    fields.push(`shipping_status = $${idx}`);
+                    params.push(crmStatus);
+                    idx++;
+                    if (crmStatus === 'delivered') {
+                        fields.push('delivered_at = COALESCE(delivered_at, NOW())');
+                        fields.push("payment_status = 'paid'");
+                    }
+                    if (crmStatus === 'returned') {
+                        fields.push('returned_at = COALESCE(returned_at, NOW())');
+                    }
+                }
+
+                params.push(order.id);
+                await query(`UPDATE orders SET ${fields.join(', ')} WHERE id = $${idx}`, params);
+                updated++;
+
+                logger.info(`[SYNC-ALL] ${order.order_number}: ${result.state} → ${crmStatus}`);
+            } catch (trackErr: any) {
+                errors++;
+                logger.warn(`[SYNC-ALL] Error syncing ${order.order_number}: ${trackErr.message}`);
+            }
+
+            // Small delay to avoid rate limiting
+            await new Promise(r => setTimeout(r, 300));
+        }
+
+        res.json({ success: true, message: `Sync complete`, updated, errors, total: ordersResult.rows.length });
+    } catch (error) {
+        logger.error('Sync-all error:', error);
+        res.status(500).json({ success: false, error: { code: 'SYNC_FAILED', message: 'Failed to sync shipments' } });
+    }
+});
+
 // ─── GET /webhooks/coliix ──────────────────────────
 // Coliix sends GET with: code, state, datereported, note
 // Registered in app.ts at /webhooks/coliix

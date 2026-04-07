@@ -7,9 +7,9 @@ import { notifyManagers } from '../services/notification.service';
 import { emitDeliveryStatusUpdated } from '../services/socket.service';
 import logger from '../utils/logger';
 
-const BATCH_SIZE = 20;       // Max orders to poll per cycle
-const DELAY_MS = 500;        // Delay between API calls to avoid rate limiting
-const POLL_INTERVAL = '*/5 * * * *'; // Every 5 minutes
+const BATCH_SIZE = 50;       // Max orders to poll per cycle
+const DELAY_MS = 300;        // Delay between API calls to avoid rate limiting
+const POLL_INTERVAL = '*/2 * * * *'; // Every 2 minutes
 
 function sleep(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));

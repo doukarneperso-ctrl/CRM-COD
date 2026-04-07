@@ -6,10 +6,10 @@ import {
 } from 'antd';
 import {
     PhoneOutlined, ClockCircleOutlined, CheckCircleOutlined, TruckOutlined,
-    RollbackOutlined, CloseCircleOutlined, CopyOutlined, DollarOutlined,
+    CloseCircleOutlined, CopyOutlined, DollarOutlined,
     ShoppingCartOutlined, ReloadOutlined, ExclamationCircleOutlined,
     StopOutlined, WarningOutlined, CalendarOutlined, MergeCellsOutlined,
-    DeleteOutlined, PlusOutlined, HistoryOutlined, SendOutlined, MinusCircleOutlined, UserOutlined,
+    DeleteOutlined, PlusOutlined, HistoryOutlined, SendOutlined, MinusCircleOutlined, SyncOutlined,
 } from '@ant-design/icons';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuthStore } from '../stores/authStore';
@@ -829,7 +829,22 @@ export default function CallCentrePage() {
             {/* Page Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <Title level={4} style={{ margin: 0 }}>📞 Call Centre</Title>
-                <Button icon={<ReloadOutlined />} onClick={() => { fetchQueue(); fetchStats(); fetchCommissions(); }}>Refresh</Button>
+                <Space>
+                    <Button
+                        icon={<SyncOutlined />}
+                        onClick={async () => {
+                            message.loading({ content: 'Syncing statuses from Coliix...', key: 'sync', duration: 0 });
+                            try {
+                                const res = await api.post('/delivery/sync-all');
+                                message.success({ content: `Sync done! ${res.data.updated} updated, ${res.data.errors} errors out of ${res.data.total} orders`, key: 'sync', duration: 4 });
+                                fetchQueue(); fetchStats();
+                            } catch {
+                                message.error({ content: 'Sync failed — check permissions', key: 'sync' });
+                            }
+                        }}
+                    >Sync Coliix</Button>
+                    <Button icon={<ReloadOutlined />} onClick={() => { fetchQueue(); fetchStats(); fetchCommissions(); }}>Refresh</Button>
+                </Space>
             </div>
 
             {/* KPI Cards — 5 in one line */}

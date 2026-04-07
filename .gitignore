@@ -6,7 +6,8 @@ backend/dist/
 frontend/dist/
 
 # Environment files
-.env
+.envgit config user.email "doukarneperso@gmail.com"
+
 .env.local
 .env.production
 
