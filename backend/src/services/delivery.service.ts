@@ -87,8 +87,8 @@ export async function exportOrder(payload: ColiixExportPayload): Promise<string>
     formData.append('token', await getColiixToken());
     formData.append('name', payload.name);
     formData.append('phone', payload.phone);
-    formData.append('merchandise', payload.merchandise);
-    formData.append('merchandise_qty', String(payload.merchandise_qty));
+    formData.append('marchandise', payload.merchandise);
+    formData.append('marchandise_qty', String(payload.merchandise_qty));
     formData.append('ville', payload.ville);
     formData.append('adresse', payload.adresse || '');
     formData.append('note', payload.note || '');
