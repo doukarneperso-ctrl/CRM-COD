@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../config/database';
 import { requireAuth } from '../middleware/auth';
-import { requirePermission } from '../middleware/permission';
+import { requirePermission, requireAnyPermission } from '../middleware/permission';
 import { validateBody } from '../middleware/validate';
 import { createAuditLog } from '../services/audit.service';
 import { parsePagination, paginationMeta, paginationSQL } from '../utils/pagination';
@@ -88,7 +88,7 @@ router.delete('/rules/:id', requireAuth, requirePermission('manage_settings'), a
 });
 
 // ─── GET /api/commissions ─────────────────────────
-router.get('/', requireAuth, requirePermission('view_commissions'), async (req: Request, res: Response) => {
+router.get('/', requireAuth, requireAnyPermission('view_commissions', 'view_assigned_commissions'), async (req: Request, res: Response) => {
     try {
         const pagination = parsePagination(req.query as any);
         const { limit, offset } = paginationSQL(pagination);
