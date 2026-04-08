@@ -485,15 +485,34 @@ export default function CallCentrePage() {
     };
 
     // ── Standalone save for confirmed orders ──
+    const hasConfirmedOrderEdits = () => {
+        if (!selectedOrder) return false;
+        const originalPhone = formatPhone(selectedOrder.customer_phone || '');
+        const originalCity = selectedOrder.customer_city || '';
+        const originalAddress = selectedOrder.customer_address || '';
+        const originalName = selectedOrder.customer_name || '';
+        return (
+            custPhone !== originalPhone ||
+            custCity !== originalCity ||
+            custAddress !== originalAddress ||
+            custName !== originalName ||
+            deliveryNotes !== (selectedOrder.delivery_notes || '')
+        );
+    };
+
     const handleSaveConfirmedChanges = async () => {
         if (!selectedOrder) return;
+        if (!hasConfirmedOrderEdits()) {
+            message.info('No changes to save');
+            return;
+        }
         setSaveChangesLoading(true);
         try {
             await saveOrderChanges();
             message.success('Changes saved successfully!');
             fetchQueue();
-        } catch {
-            message.error('Failed to save changes');
+        } catch (err: any) {
+            message.error(err?.response?.data?.error?.message || 'Failed to save changes');
         }
         setSaveChangesLoading(false);
     };
@@ -501,24 +520,22 @@ export default function CallCentrePage() {
     // ── Save order changes before status change ──
     const saveOrderChanges = async () => {
         if (!selectedOrder) return;
-        try {
-            await api.put(`/orders/${selectedOrder.id}`, {
-                customerName: custName || undefined,
-                customerPhone: custPhone || undefined,
-                customerCity: custCity || undefined,
-                customerAddress: custAddress || undefined,
-                deliveryNotes: deliveryNotes || undefined,
-                discount: discountValue || 0,
-                note: callNotes || undefined,
-                items: editableItems.map(item => ({
-                    variantId: item.variantId || null,
-                    productName: item.productName || '',
-                    variantInfo: item.variantInfo || '',
-                    quantity: item.quantity || 1,
-                    unitPrice: item.unitPrice || 0,
-                })),
-            });
-        } catch { }
+        await api.put(`/orders/${selectedOrder.id}`, {
+            customerName: custName || undefined,
+            customerPhone: custPhone || undefined,
+            customerCity: custCity || undefined,
+            customerAddress: custAddress || undefined,
+            deliveryNotes: deliveryNotes || undefined,
+            discount: discountValue || 0,
+            note: callNotes || undefined,
+            items: editableItems.map(item => ({
+                variantId: item.variantId || null,
+                productName: item.productName || '',
+                variantInfo: item.variantInfo || '',
+                quantity: item.quantity || 1,
+                unitPrice: item.unitPrice || 0,
+            })),
+        });
     };
 
     // ── Change confirmation status ──
@@ -1433,28 +1450,29 @@ export default function CallCentrePage() {
 
                         {/* ── SAVE CHANGES — only for confirmed orders with edits ── */}
                         {selectedOrder.confirmation_status === 'confirmed' && (() => {
-                            const originalPhone = formatPhone(selectedOrder.customer_phone || '');
-                            const originalCity = selectedOrder.customer_city || '';
-                            const originalAddress = selectedOrder.customer_address || '';
-                            const originalName = selectedOrder.customer_name || '';
-                            const isDirty = custPhone !== originalPhone || custCity !== originalCity ||
-                                custAddress !== originalAddress || custName !== originalName ||
-                                deliveryNotes !== (selectedOrder.delivery_notes || '');
-                            return isDirty ? (
+                            const isDirty = hasConfirmedOrderEdits();
+                            return (
                                 <div style={{ marginBottom: 10 }}>
                                     <Button
                                         type="primary" block size="middle"
                                         loading={saveChangesLoading}
+                                        disabled={!isDirty}
                                         onClick={handleSaveConfirmedChanges}
                                         style={{
                                             background: '#1890ff', borderColor: '#1890ff',
                                             fontWeight: 600, fontSize: 13,
+                                            opacity: isDirty ? 1 : 0.65,
                                         }}
                                     >
-                                        💾 Save Changes
+                                        Save Changes
                                     </Button>
+                                    {!isDirty && (
+                                        <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4 }}>
+                                            No changes detected yet.
+                                        </div>
+                                    )}
                                 </div>
-                            ) : null;
+                            );
                         })()}
 
                         {/* ── ACTION BUTTONS — 2 rows of 3 ── */}
@@ -1953,3 +1971,4 @@ export default function CallCentrePage() {
         </div>
     );
 }
+
