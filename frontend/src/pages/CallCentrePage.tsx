@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
     Table, Button, Card, Row, Col, Typography, Tag, Input, InputNumber,
     Select, DatePicker, Space, Tabs, Badge, Tooltip, message,
-    Modal, Divider, Alert, Collapse, Form,
+    Modal, Divider, Alert, Collapse, Form, Timeline,
 } from 'antd';
 import {
     PhoneOutlined, ClockCircleOutlined, CheckCircleOutlined, TruckOutlined,
@@ -141,6 +141,10 @@ export default function CallCentrePage() {
     // Customer history
     const [customerHistory, setCustomerHistory] = useState<any[]>([]);
     const [historyLoading, setHistoryLoading] = useState(false);
+    const [trackingHistoryOpen, setTrackingHistoryOpen] = useState(false);
+    const [trackingHistoryLoading, setTrackingHistoryLoading] = useState(false);
+    const [trackingHistoryData, setTrackingHistoryData] = useState<any>(null);
+    const [trackingHistoryOrder, setTrackingHistoryOrder] = useState<any>(null);
 
     
 
@@ -269,6 +273,26 @@ export default function CallCentrePage() {
             }));
             setCouriers(withCities);
         } catch { }
+    };
+
+    const openTrackingHistory = async (order: any) => {
+        if (!order?.tracking_number) {
+            message.warning('No tracking number for this order');
+            return;
+        }
+        setTrackingHistoryOrder(order);
+        setTrackingHistoryData(null);
+        setTrackingHistoryOpen(true);
+        setTrackingHistoryLoading(true);
+        try {
+            const res = await api.get(`/delivery/track/${encodeURIComponent(order.tracking_number)}`);
+            setTrackingHistoryData(res.data?.data || null);
+        } catch {
+            setTrackingHistoryData(null);
+            message.error('Failed to load shipping status history');
+        } finally {
+            setTrackingHistoryLoading(false);
+        }
     };
 
     useEffect(() => { fetchStats(); fetchCommissions(); fetchProducts(); fetchCouriers(); }, []);
@@ -779,6 +803,25 @@ export default function CallCentrePage() {
             },
         },
         {
+            title: '', key: 'shipping_history', width: 36,
+            render: (_: any, r: any) => (
+                r.tracking_number ? (
+                    <Tooltip title="View shipping status history">
+                        <Button
+                            type="text"
+                            size="small"
+                            icon={<HistoryOutlined />}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                openTrackingHistory(r);
+                            }}
+                            style={{ padding: 0, width: 20, height: 20, color: '#8B5A2B' }}
+                        />
+                    </Tooltip>
+                ) : null
+            ),
+        },
+        {
             title: 'ACTIONS', key: 'actions', width: 100, align: 'center' as const,
             render: (_: any, r: any) => (
                 <Button
@@ -1013,6 +1056,46 @@ export default function CallCentrePage() {
             </Card>
 
             {/* ═══ CONFIRMATION POPUP MODAL ═══ */}
+            <Modal
+                title={<span>Shipping History — {trackingHistoryOrder?.order_number || ''}</span>}
+                open={trackingHistoryOpen}
+                onCancel={() => {
+                    setTrackingHistoryOpen(false);
+                    setTrackingHistoryData(null);
+                    setTrackingHistoryOrder(null);
+                }}
+                footer={null}
+                width={620}
+                styles={{ body: { maxHeight: '70vh', overflow: 'auto' } }}
+            >
+                {trackingHistoryLoading ? (
+                    <Text type="secondary">Loading shipping history...</Text>
+                ) : trackingHistoryData?.history?.length > 0 ? (
+                    <Timeline
+                        style={{ marginTop: 8 }}
+                        items={trackingHistoryData.history
+                            .slice()
+                            .reverse()
+                            .map((h: any, idx: number) => ({
+                                key: `${h.status || 'status'}-${h.time || idx}`,
+                                color: idx === trackingHistoryData.history.length - 1 ? 'green' : 'blue',
+                                children: (
+                                    <div>
+                                        <div style={{ fontSize: 13, fontWeight: 600 }}>{h.status || '—'}</div>
+                                        <div style={{ fontSize: 11, opacity: 0.7 }}>
+                                            {h.time ? (dayjs(h.time).isValid() ? dayjs(h.time).format('MMM DD, YYYY HH:mm:ss') : h.time) : 'No date'}
+                                        </div>
+                                        {h.etat && <div style={{ fontSize: 11, marginTop: 2, color: '#1677ff' }}>Payment: {h.etat}</div>}
+                                        {h.note && <div style={{ fontSize: 11, marginTop: 2, color: '#8B5A2B' }}>Note: {h.note}</div>}
+                                    </div>
+                                ),
+                            }))}
+                    />
+                ) : (
+                    <Text type="secondary">No shipping history available yet.</Text>
+                )}
+            </Modal>
+
             <Modal
                 title={null}
                 open={confirmModalOpen}
