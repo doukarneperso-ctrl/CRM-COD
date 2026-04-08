@@ -64,6 +64,11 @@ export default function ProductsPage() {
     const [bulkCost, setBulkCost] = useState<number | null>(null);
     const [bulkStock, setBulkStock] = useState<number | null>(null);
 
+    // Quick add variant state
+    const [showQuickAddVariantModal, setShowQuickAddVariantModal] = useState(false);
+    const [quickAddLoading, setQuickAddLoading] = useState(false);
+    const [quickAddForm] = Form.useForm();
+
     const fetchProducts = async () => {
         setLoading(true);
         try {
@@ -187,6 +192,39 @@ export default function ProductsPage() {
             message.success('Product deleted');
             fetchProducts();
         } catch { message.error('Delete failed'); }
+    };
+
+    const handleQuickAddVariant = async (values: any) => {
+        if (!editProduct) {
+            message.error('No product selected');
+            return;
+        }
+
+        setQuickAddLoading(true);
+        try {
+            const newVariant = {
+                size: values.size || undefined,
+                color: values.color || undefined,
+                sku: values.sku,
+                price: values.price,
+                stock: values.stock || 0,
+                isActive: true,
+            };
+
+            const res = await api.post(`/products/${editProduct.id}/variants`, newVariant);
+            message.success('Variation created');
+
+            // Add variant to local list instantly
+            setVariantsList(prev => [...prev, { ...res.data.data, tempId: res.data.data.id }]);
+
+            // Close modal and reset form
+            setShowQuickAddVariantModal(false);
+            quickAddForm.resetFields();
+        } catch (err: any) {
+            message.error(err.response?.data?.error?.message || 'Failed to create variation');
+        } finally {
+            setQuickAddLoading(false);
+        }
     };
 
     const clearForm = () => {
@@ -516,7 +554,23 @@ export default function ProductsPage() {
                         </Col>
                     </Row>
 
-                    <Divider style={{ borderColor: 'rgba(139,90,43,0.15)', color: '#C18E53' }}>Variants & Inventory</Divider>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, marginTop: 16 }}>
+                        <Divider style={{ flex: 1, borderColor: 'rgba(139,90,43,0.15)', margin: 0, marginRight: 12 }} />
+                        <Text style={{ color: '#C18E53', fontWeight: 500, whiteSpace: 'nowrap', marginRight: 12 }}>Variants & Inventory</Text>
+                        {editProduct && hasPermission('edit_products') && (
+                            <Button
+                                size="small"
+                                type="primary"
+                                icon={<PlusOutlined />}
+                                onClick={() => {
+                                    quickAddForm.resetFields();
+                                    setShowQuickAddVariantModal(true);
+                                }}>
+                                Add Variation
+                            </Button>
+                        )}
+                        <Divider style={{ flex: 1, borderColor: 'rgba(139,90,43,0.15)', margin: 0, marginLeft: 12 }} />
+                    </div>
 
                     {!editProduct && (
                         <div style={{ background: 'rgba(139,90,43,0.05)', padding: 16, borderRadius: 8, marginBottom: 20 }}>
@@ -570,6 +624,74 @@ export default function ProductsPage() {
                             </Button>
                         </Space>
                     </Form.Item>
+                </Form>
+            </Modal>
+
+            {/* Quick Add Variant Modal */}
+            <Modal
+                title={<span><PlusOutlined /> Add Variation to {editProduct?.name}</span>}
+                open={showQuickAddVariantModal}
+                onCancel={() => setShowQuickAddVariantModal(false)}
+                onOk={() => quickAddForm.submit()}
+                confirmLoading={quickAddLoading}
+                width={500}
+                okText="Create"
+            >
+                <Form
+                    form={quickAddForm}
+                    layout="vertical"
+                    onFinish={handleQuickAddVariant}
+                >
+                    <Row gutter={16}>
+                        <Col xs={24} sm={12}>
+                            <Form.Item
+                                name="size"
+                                label="Size (Optional)"
+                                rules={[]}
+                            >
+                                <Input placeholder="e.g. M, L, XL" />
+                            </Form.Item>
+                        </Col>
+                        <Col xs={24} sm={12}>
+                            <Form.Item
+                                name="color"
+                                label="Color (Optional)"
+                                rules={[]}
+                            >
+                                <Input placeholder="e.g. Red, Blue" />
+                            </Form.Item>
+                        </Col>
+                    </Row>
+                    <Form.Item
+                        name="sku"
+                        label="SKU"
+                        rules={[{ required: true, message: 'SKU is required' }]}
+                    >
+                        <Input placeholder="e.g. PROD-001-RED" />
+                    </Form.Item>
+                    <Row gutter={16}>
+                        <Col xs={24} sm={12}>
+                            <Form.Item
+                                name="price"
+                                label="Price"
+                                rules={[
+                                    { required: true, message: 'Price is required' },
+                                ]}
+                            >
+                                <InputNumber min={0} placeholder="0.00" style={{ width: '100%' }} step={0.01} />
+                            </Form.Item>
+                        </Col>
+                        <Col xs={24} sm={12}>
+                            <Form.Item
+                                name="stock"
+                                label="Stock Quantity"
+                                rules={[{ required: true, message: 'Stock is required' }]}
+                                initialValue={0}
+                            >
+                                <InputNumber min={0} placeholder="0" style={{ width: '100%' }} />
+                            </Form.Item>
+                        </Col>
+                    </Row>
                 </Form>
             </Modal>
 
