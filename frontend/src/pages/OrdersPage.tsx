@@ -76,14 +76,13 @@ const sourceConfig: Record<string, { color: string; icon: React.ReactNode; label
 
 // All available column keys for toggle
 const ALL_COLUMN_KEYS = [
-    'order_number', 'created_at', 'customer', 'product', 'amount',
+    'order_number', 'customer', 'product', 'amount',
     'confirmation', 'shipping', 'delivery_notes', 'note', 'source',
     'delivery', 'city', 'actions',
 ];
 
 const COLUMN_LABELS: Record<string, string> = {
     order_number: 'Order ID',
-    created_at: 'Created At',
     customer: 'Customer',
     product: 'Product',
     amount: 'Amount',
@@ -649,16 +648,6 @@ export default function OrdersPage() {
         fetchOrders();
     };
 
-    const formatDate = (dateStr: string) => {
-        const d = new Date(dateStr);
-        const day = String(d.getDate()).padStart(2, '0');
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const year = d.getFullYear();
-        const hours = String(d.getHours()).padStart(2, '0');
-        const mins = String(d.getMinutes()).padStart(2, '0');
-        return { date: `${day}/${month}/${year}`, time: `${hours}:${mins}` };
-    };
-
     const formatAmount = (amount: string | number) => {
         const num = parseFloat(String(amount));
         return num.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' MAD';
@@ -731,12 +720,22 @@ export default function OrdersPage() {
 
     const allColumns = [
         {
-            title: 'OR.ID', dataIndex: 'order_number', key: 'order_number', width: 52, fixed: 'left' as const,
+            title: 'OR.ID', dataIndex: 'order_number', key: 'order_number', width: 92, fixed: 'left' as const,
             render: (v: string, r: any) => {
                 // Show short ID: "ORD-26-00195" → "#00195"
                 const shortId = v ? '#' + v.replace(/^ORD-\d+-/, '') : v;
+                const dateTime = r.created_at
+                    ? new Date(r.created_at).toLocaleString('en-GB', {
+                        month: 'short',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false,
+                    })
+                    : '-';
                 return (
                     <div>
+                        <div style={{ fontSize: 9, opacity: 0.65, marginBottom: 2, whiteSpace: 'nowrap' }}>{dateTime}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                             <Tooltip title={v}>
                                 <Text strong style={{ fontSize: 10, letterSpacing: '-0.3px', cursor: 'default' }}>{shortId}</Text>
@@ -764,18 +763,6 @@ export default function OrdersPage() {
                                 {r.assigned_to_name.split(' ')[0]}
                             </div>
                         )}
-                    </div>
-                );
-            },
-        },
-        {
-            title: 'DATE', dataIndex: 'created_at', key: 'created_at', width: 68,
-            render: (v: string) => {
-                const { date, time } = formatDate(v);
-                return (
-                    <div>
-                        <div style={{ fontSize: 12 }}>{date}</div>
-                        <div style={{ fontSize: 10, opacity: 0.6 }}>{time}</div>
                     </div>
                 );
             },

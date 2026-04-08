@@ -687,7 +687,7 @@ export default function CallCentrePage() {
             render: (v: string, r: any) => (
                 <div style={{ lineHeight: 1.15 }}>
                     <div style={{ fontSize: 10, opacity: 0.65, marginBottom: 2 }}>
-                        {r.created_at ? dayjs(r.created_at).format('DD/MM/YYYY') : '-'}
+                        {r.created_at ? dayjs(r.created_at).format('MMM DD, HH:mm') : '-'}
                     </div>
                     <Text strong style={{ fontSize: 12 }}>{v}</Text>
                 </div>
