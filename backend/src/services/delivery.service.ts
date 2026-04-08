@@ -166,7 +166,7 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
     const data = response.data;
 
     const strOrEmpty = (v: any) => (typeof v === 'string' ? v.trim() : '');
-    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
     const matchKey = (actual: string, expected: string) => norm(actual) === norm(expected);
     const pickFirstString = (obj: any, keys: string[]) => {
         if (!obj || typeof obj !== 'object') return '';
@@ -258,6 +258,14 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
         note: extractNote(m),
     })).filter((h: any) => h.status);
 
+    const responseLevelNote = extractNote(data);
+    const responseLevelTime = pickFirstString(data, ['datereported', 'time', 'date', 'datetime', 'updated_at']);
+    if (normalized.length > 0) {
+        const i = normalized.length - 1;
+        if (!normalized[i].note && responseLevelNote) normalized[i].note = responseLevelNote;
+        if (!normalized[i].time && responseLevelTime) normalized[i].time = responseLevelTime;
+    }
+
     const latest = normalized.length > 0 ? normalized[normalized.length - 1] : null;
     const state = strOrEmpty(latest?.status);
     const crmStatus = detectCrmStatus(state);
@@ -267,8 +275,8 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
         state,
         crmStatus,
         history: normalized,
-        datereported: strOrEmpty(latest?.time),
-        note: strOrEmpty(latest?.note),
+        datereported: strOrEmpty(latest?.time || responseLevelTime),
+        note: strOrEmpty(latest?.note || responseLevelNote),
     };
 }
 
