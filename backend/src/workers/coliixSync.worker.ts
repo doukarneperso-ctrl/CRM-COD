@@ -14,6 +14,23 @@ function sleep(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function insertColiixHistoryIfMissing(
+    orderId: string,
+    oldValue: string,
+    newValue: string,
+    note: string
+) {
+    await query(
+        `INSERT INTO status_history (order_id, field, old_value, new_value, changed_by, note)
+         SELECT $1, 'courier_status', $2, $3, NULL, $4
+         WHERE NOT EXISTS (
+           SELECT 1 FROM status_history
+           WHERE order_id = $1 AND field = 'courier_status' AND new_value = $3 AND note = $4
+         )`,
+        [orderId, oldValue || '', newValue || '', note || '']
+    );
+}
+
 /**
  * Coliix Status Sync Worker
  * Polls Coliix API every 5 minutes for all orders with active shipments.
@@ -84,6 +101,16 @@ export function startColiixSyncWorker(): void {
                 try {
                     // Call Coliix track API
                     const result = await trackOrder(order.tracking_number);
+                    // Backfill detailed Coliix status history (deduped) including comments.
+                    if (Array.isArray(result.history) && result.history.length > 0) {
+                        for (let i = 0; i < result.history.length; i++) {
+                            const h = result.history[i];
+                            if (!h?.status) continue;
+                            const prev = i > 0 ? (result.history[i - 1]?.status || '') : (order.courier_status || '');
+                            const historyNote = `Coliix: ${h.status}${h.time ? ` @ ${h.time}` : ''}${h.note ? ` — ${h.note}` : ''}`;
+                            await insertColiixHistoryIfMissing(String(order.id), prev, h.status, historyNote);
+                        }
+                    }
 
                     if (!result.state) {
                         continue; // No state returned — skip
@@ -136,12 +163,9 @@ export function startColiixSyncWorker(): void {
                     );
 
                     // Log the change
-                    if (shippingStatusChanged && crmStatus) {
-                        await query(
-                            `INSERT INTO status_history (order_id, field, old_value, new_value, changed_by, note)
-                             VALUES ($1, 'courier_status', $2, $3, NULL, $4)`,
-                            [order.id, order.courier_status || '', result.state, `Coliix: ${result.state}`]
-                        );
+                    if (courierStatusChanged || shippingStatusChanged) {
+                        const latestNote = `Coliix: ${result.state}${result.datereported ? ` @ ${result.datereported}` : ''}${result.note ? ` - ${result.note}` : ''}`;
+                        await insertColiixHistoryIfMissing(String(order.id), order.courier_status || '', result.state, latestNote);
 
                         await createAuditLog({
                             tableName: 'orders', recordId: String(order.id), action: 'coliix_sync',

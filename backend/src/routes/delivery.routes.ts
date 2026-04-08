@@ -27,6 +27,23 @@ const cityFeeSchema = z.object({
     isActive: z.boolean().default(true),
 });
 
+async function insertColiixHistoryIfMissing(
+    orderId: string,
+    oldValue: string,
+    newValue: string,
+    note: string
+) {
+    await query(
+        `INSERT INTO status_history (order_id, field, old_value, new_value, changed_by, note)
+         SELECT $1, 'courier_status', $2, $3, NULL, $4
+         WHERE NOT EXISTS (
+           SELECT 1 FROM status_history
+           WHERE order_id = $1 AND field = 'courier_status' AND new_value = $3 AND note = $4
+         )`,
+        [orderId, oldValue || '', newValue || '', note || '']
+    );
+}
+
 // ─── GET /api/delivery/companies ──────────────────
 router.get('/companies', requireAuth, async (_req: Request, res: Response) => {
     try {
@@ -424,6 +441,17 @@ router.post('/sync-all', requireAuth, requirePermission('manage_settings'), asyn
                 const result = await trackOrder(order.tracking_number);
                 if (!result.state) continue;
 
+                // Backfill detailed Coliix status timeline (deduped) including comments.
+                if (Array.isArray(result.history) && result.history.length > 0) {
+                    for (let i = 0; i < result.history.length; i++) {
+                        const h = result.history[i];
+                        if (!h?.status) continue;
+                        const prev = i > 0 ? (result.history[i - 1]?.status || '') : (order.courier_status || '');
+                        const historyNote = `Coliix: ${h.status}${h.time ? ` @ ${h.time}` : ''}${h.note ? ` - ${h.note}` : ''}`;
+                        await insertColiixHistoryIfMissing(String(order.id), prev, h.status, historyNote);
+                    }
+                }
+
                 const crmStatus = detectCrmStatus(result.state);
                 const courierChanged = result.state !== order.courier_status;
                 const shippingChanged = crmStatus && crmStatus !== order.shipping_status;
@@ -455,6 +483,9 @@ router.post('/sync-all', requireAuth, requirePermission('manage_settings'), asyn
 
                 params.push(order.id);
                 await query(`UPDATE orders SET ${fields.join(', ')} WHERE id = $${idx}`, params);
+
+                const latestNote = `Coliix: ${result.state}${result.datereported ? ` @ ${result.datereported}` : ''}${result.note ? ` - ${result.note}` : ''}`;
+                await insertColiixHistoryIfMissing(String(order.id), order.courier_status || '', result.state, latestNote);
                 if (order.shipping_status === 'delivered' && crmStatus !== 'delivered') {
                     await voidPendingCommissionsForOrder(
                         String(order.id),
@@ -529,10 +560,11 @@ export async function handleColiixWebhook(req: Request, res: Response): Promise<
 
         await query(`UPDATE orders SET ${updateFields.join(', ')} WHERE id = $2`, [crmStatus, order.id]);
 
-        await query(
-            `INSERT INTO status_history (order_id, field, old_value, new_value, changed_by, note)
-             VALUES ($1, 'courier_status', $2, $3, NULL, $4)`,
-            [order.id, order.courier_status || oldStatus, state, `Coliix: ${state}${note ? ' — ' + note : ''}`]
+        await insertColiixHistoryIfMissing(
+            String(order.id),
+            order.courier_status || oldStatus,
+            state,
+            `Coliix: ${state}${datereported ? ` @ ${datereported}` : ''}${note ? ` — ${note}` : ''}`
         );
 
         await createAuditLog({

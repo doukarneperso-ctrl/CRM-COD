@@ -1817,6 +1817,11 @@ export default function OrdersPage() {
                                                 <Text style={{ fontSize: 12 }}>
                                                     {h.field?.replace(/_/g, ' ')}: <Text delete type="secondary">{h.old_value || '—'}</Text> → <Text strong>{h.new_value}</Text>
                                                 </Text>
+                                                {h.note && (
+                                                    <div style={{ fontSize: 11, color: '#8B5A2B', marginTop: 2 }}>
+                                                        {h.note}
+                                                    </div>
+                                                )}
                                                 <div style={{ fontSize: 10, opacity: 0.5 }}>
                                                     {h.changed_by_name} — {new Date(h.created_at).toLocaleString()}
                                                 </div>

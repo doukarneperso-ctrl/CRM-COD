@@ -83,7 +83,8 @@ export interface ColiixExportPayload {
 export interface ColiixHistoryEntry {
     status: string;   // e.g. "Livré", "Ramassé", "Expédié"
     time: string;     // e.g. "2026-03-17 19:25 :49"
-    etat?: string;    // payment status e.g. "Payé", "Non Payé"
+    etat?: string;    // payment status
+    note?: string;    // optional courier note/comment
 }
 
 export interface ColiixTrackResult {
@@ -169,6 +170,12 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
     const latest = msgArray.length > 0 ? msgArray[msgArray.length - 1] : null;
     const state = latest?.status?.trim() || '';
     const crmStatus = detectCrmStatus(state);
+    
+    const extractNote = (m: any): string => {
+        const candidates = [m?.note, m?.notes, m?.comment, m?.commentaire, m?.observation, m?.obs, m?.motif, m?.description];
+        const first = candidates.find((v: any) => typeof v === 'string' && v.trim() !== '');
+        return first ? String(first).trim() : '';
+    };
 
     return {
         tracking: trackingCode,
@@ -178,9 +185,11 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
             status: (m.status || '').trim(),
             time: (m.time || '').trim(),
             etat: m.etat,
+            note: extractNote(m),
         })),
         datereported: latest?.time?.trim() || '',
-        note: '',
+        note: extractNote(latest),
     };
 }
+
 
