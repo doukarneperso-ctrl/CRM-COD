@@ -165,34 +165,79 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
 
     const data = response.data;
 
-    // data.msg is an array of status history entries
-    const msgArray: any[] = Array.isArray(data.msg) ? data.msg : [];
-    const latest = msgArray.length > 0 ? msgArray[msgArray.length - 1] : null;
-    const state = latest?.status?.trim() || '';
-    const crmStatus = detectCrmStatus(state);
-    
-    const extractNote = (m: any): string => {
-        const candidates = [
-            m?.note, m?.notes, m?.comment, m?.commentaire,
-            m?.observation, m?.obs, m?.motif, m?.description,
-            m?.info, m?.infos, m?.information, m?.informations,
-        ];
-        const first = candidates.find((v: any) => typeof v === 'string' && v.trim() !== '');
-        return first ? String(first).trim() : '';
+    const strOrEmpty = (v: any) => (typeof v === 'string' ? v.trim() : '');
+    const pickFirstString = (obj: any, keys: string[]) => {
+        if (!obj || typeof obj !== 'object') return '';
+        // direct key match (case-sensitive)
+        for (const k of keys) {
+            const val = obj[k];
+            if (typeof val === 'string' && val.trim() !== '') return val.trim();
+        }
+        // case-insensitive key match
+        const entries = Object.entries(obj) as Array<[string, any]>;
+        for (const k of keys) {
+            const found = entries.find(([ek, ev]) => ek.toLowerCase() === k.toLowerCase() && typeof ev === 'string' && ev.trim() !== '');
+            if (found) return String(found[1]).trim();
+        }
+        return '';
     };
+    const extractNote = (m: any): string => {
+        const explicit = pickFirstString(m, [
+            'note', 'notes', 'comment', 'commentaire', 'observation', 'obs', 'motif', 'description',
+            'info', 'infos', 'information', 'informations',
+        ]);
+        if (explicit) return explicit;
+        // Last fallback: any string field whose key looks like comment/info.
+        if (m && typeof m === 'object') {
+            for (const [k, v] of Object.entries(m)) {
+                if (typeof v !== 'string' || !v.trim()) continue;
+                const lk = k.toLowerCase();
+                if (lk.includes('comment') || lk.includes('info') || lk.includes('note') || lk.includes('motif') || lk.includes('observ')) {
+                    return v.trim();
+                }
+            }
+        }
+        return '';
+    };
+    const normalizeHistoryArray = (raw: any): any[] => {
+        if (Array.isArray(raw)) return raw;
+        if (typeof raw === 'string') {
+            try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return parsed;
+                if (parsed && typeof parsed === 'object') return Object.values(parsed);
+            } catch { /* ignore */ }
+        }
+        if (raw && typeof raw === 'object') return Object.values(raw);
+        return [];
+    };
+
+    // Coliix payload can vary; accept multiple known containers.
+    const msgArrayRaw =
+        normalizeHistoryArray(data?.msg).length > 0 ? data?.msg :
+            normalizeHistoryArray(data?.data).length > 0 ? data?.data :
+                normalizeHistoryArray(data?.history).length > 0 ? data?.history :
+                    normalizeHistoryArray(data?.result);
+
+    const msgArray: any[] = normalizeHistoryArray(msgArrayRaw).filter(Boolean);
+    const normalized = msgArray.map((m: any) => ({
+        status: pickFirstString(m, ['status', 'statut', 'state', 'etat_colis']),
+        time: pickFirstString(m, ['time', 'date', 'datetime', 'created_at', 'updated_at', 'datereported']),
+        etat: pickFirstString(m, ['etat', 'payment', 'payment_status']),
+        note: extractNote(m),
+    })).filter((h: any) => h.status);
+
+    const latest = normalized.length > 0 ? normalized[normalized.length - 1] : null;
+    const state = strOrEmpty(latest?.status);
+    const crmStatus = detectCrmStatus(state);
 
     return {
         tracking: trackingCode,
         state,
         crmStatus,
-        history: msgArray.map((m: any) => ({
-            status: (m.status || '').trim(),
-            time: (m.time || '').trim(),
-            etat: m.etat,
-            note: extractNote(m),
-        })),
-        datereported: latest?.time?.trim() || '',
-        note: extractNote(latest),
+        history: normalized,
+        datereported: strOrEmpty(latest?.time),
+        note: strOrEmpty(latest?.note),
     };
 }
 
