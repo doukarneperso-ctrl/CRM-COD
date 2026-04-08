@@ -223,11 +223,11 @@ export default function ProductsPage() {
                 }
             }
 
+            await fetchProducts();
             message.success('Product updated');
             setModalOpen(false);
             setEditProduct(null);
             clearForm();
-            fetchProducts();
         } catch (err: any) {
             message.error(err.response?.data?.error?.message || 'Update failed');
         }
@@ -603,18 +603,18 @@ export default function ProductsPage() {
                             <Table dataSource={variantsList} rowKey={(r) => r.tempId || r.id || 'key'}
                                 pagination={false} size="small" scroll={{ x: 600, y: 240 }}
                                 columns={[
-                                    { title: 'Size', dataIndex: 'size', width: 90, render: (v: any, r: any) => <Input size="small" value={v} onChange={e => updateVariant(r.tempId!, 'size', e.target.value)} /> },
-                                    { title: 'Color', dataIndex: 'color', width: 90, render: (v: any, r: any) => <Input size="small" value={v} onChange={e => updateVariant(r.tempId!, 'color', e.target.value)} /> },
-                                    { title: 'SKU', dataIndex: 'sku', width: 130, render: (v: any, r: any) => <Input size="small" value={v} onChange={e => updateVariant(r.tempId!, 'sku', e.target.value)} /> },
-                                    { title: 'Price', dataIndex: 'price', width: 85, render: (v: any, r: any) => <InputNumber size="small" value={v} min={0} onChange={(val: any) => updateVariant(r.tempId!, 'price', val)} /> },
-                                    { title: 'Cost', dataIndex: 'costPrice', width: 85, render: (v: any, r: any) => <InputNumber size="small" value={v} min={0} onChange={(val: any) => updateVariant(r.tempId!, 'costPrice', val)} /> },
-                                    { title: 'Stock', dataIndex: 'stock', width: 80, render: (v: any, r: any) => <InputNumber size="small" value={v} min={0} onChange={(val: any) => updateVariant(r.tempId!, 'stock', val)} /> },
+                                    { title: 'Size', dataIndex: 'size', width: 90, render: (v: any, r: any) => <Input size="small" value={v} onChange={e => updateVariant(r.tempId || r.id, 'size', e.target.value)} /> },
+                                    { title: 'Color', dataIndex: 'color', width: 90, render: (v: any, r: any) => <Input size="small" value={v} onChange={e => updateVariant(r.tempId || r.id, 'color', e.target.value)} /> },
+                                    { title: 'SKU', dataIndex: 'sku', width: 130, render: (v: any, r: any) => <Input size="small" value={v} onChange={e => updateVariant(r.tempId || r.id, 'sku', e.target.value)} /> },
+                                    { title: 'Price', dataIndex: 'price', width: 85, render: (v: any, r: any) => <InputNumber size="small" value={v} min={0} onChange={(val: any) => updateVariant(r.tempId || r.id, 'price', val)} /> },
+                                    { title: 'Cost', dataIndex: 'costPrice', width: 85, render: (v: any, r: any) => <InputNumber size="small" value={v} min={0} onChange={(val: any) => updateVariant(r.tempId || r.id, 'costPrice', val)} /> },
+                                    { title: 'Stock', dataIndex: 'stock', width: 80, render: (v: any, r: any) => <InputNumber size="small" value={v} min={0} onChange={(val: any) => updateVariant(r.tempId || r.id, 'stock', val)} /> },
                                     { title: '', width: 90, render: (_: any, r: any) => (
                                         <Space size={0}>
                                             <Tooltip title="Duplicate">
-                                                <Button type="text" size="small" icon={<RedoOutlined style={{ fontSize: 12 }} />} onClick={() => duplicateVariant(r.tempId!)} />
+                                                <Button type="text" size="small" icon={<RedoOutlined style={{ fontSize: 12 }} />} onClick={() => duplicateVariant(r.tempId || r.id)} />
                                             </Tooltip>
-                                            <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeVariant(r.tempId!)} />
+                                            <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeVariant(r.tempId || r.id)} />
                                         </Space>
                                     ) }
                                 ]} />

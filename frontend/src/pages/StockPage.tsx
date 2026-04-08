@@ -25,7 +25,6 @@ interface VariantData {
     price: number;
     low_stock_threshold: number;
 }
-
 export default function StockPage() {
     const [products, setProducts] = useState<any[]>([]);
     const [searchText, setSearchText] = useState('');
@@ -140,14 +139,21 @@ export default function StockPage() {
             if (editingCell.field === 'stock') payload.stock = editValue;
             else if (editingCell.field === 'price') payload.price = editValue;
             else if (editingCell.field === 'sku') payload.sku = editValue;
+            if (payload.stock === null || payload.stock === undefined) delete payload.stock;
+            if (payload.price === null || payload.price === undefined) delete payload.price;
+            if (payload.sku === null || payload.sku === undefined) payload.sku = '';
+            if (Object.keys(payload).length === 0) {
+                setEditingCell(null);
+                return;
+            }
 
             const variant = allVariants.find(v => v.id === editingCell.variantId);
             if (!variant) return;
 
             await api.put(`/products/${variant.product_id}/variants/${editingCell.variantId}`, payload);
+            await fetchProducts();
             message.success('Updated');
             setEditingCell(null);
-            fetchProducts();
         } catch (err: any) {
             message.error(err.response?.data?.error?.message || 'Update failed');
         }
@@ -170,9 +176,9 @@ export default function StockPage() {
         try {
             const newStock = Math.max(0, adjustVariant.stock + adjustAmount);
             await api.put(`/products/${adjustVariant.product_id}/variants/${adjustVariant.id}`, { stock: newStock });
+            await fetchProducts();
             message.success(`Stock adjusted: ${adjustVariant.stock} → ${newStock}`);
             setAdjustModal(false);
-            fetchProducts();
         } catch (err: any) {
             message.error(err.response?.data?.error?.message || 'Adjustment failed');
         }
@@ -697,3 +703,4 @@ export default function StockPage() {
         </div>
     );
 }
+
