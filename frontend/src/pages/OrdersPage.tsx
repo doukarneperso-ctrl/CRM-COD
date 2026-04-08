@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
     Table, Button, Modal, Form, Input, InputNumber, Select, Space, Typography,
     Tag, Popconfirm, message, Card, Row, Col, Timeline, Divider, Alert,
-    DatePicker, Tooltip, Dropdown, Checkbox, Tabs,
+    DatePicker, Tooltip, Dropdown, Checkbox, Tabs, Empty,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import {
@@ -142,6 +142,11 @@ export default function OrdersPage() {
     const [reassignOrder, setReassignOrder] = useState<any>(null);
     const [reassignAgentId, setReassignAgentId] = useState<string | undefined>(undefined);
     const [reassignLoading, setReassignLoading] = useState(false);
+
+    // Bulk reassign state
+    const [showBulkReassignModal, setShowBulkReassignModal] = useState(false);
+    const [bulkReassignAgentId, setBulkReassignAgentId] = useState<string | undefined>(undefined);
+    const [bulkReassignLoading, setBulkReassignLoading] = useState(false);
 
     // Out-of-stock queue
     const [oosQueue, setOosQueue] = useState<any[]>([]);
@@ -601,6 +606,46 @@ export default function OrdersPage() {
         setAssignLoading(false);
         setSelectedRowKeys([]);
         setAssignAgent('');
+        fetchOrders();
+    };
+
+    // Bulk reassign or unassign selected orders
+    const handleBulkReassign = async (agentId: string | null) => {
+        if (selectedRowKeys.length === 0) {
+            message.warning('Select orders first');
+            return;
+        }
+
+        setBulkReassignLoading(true);
+        let successCount = 0;
+        const errors: string[] = [];
+
+        for (const key of selectedRowKeys) {
+            try {
+                await api.post('/auth/reassign-order', {
+                    orderId: key,
+                    agentId: agentId,
+                });
+                successCount++;
+            } catch (err: any) {
+                const orderNumber = orders.find((o: any) => o.id === key)?.order_number || key;
+                errors.push(`Order #${orderNumber}: ${err?.response?.data?.error?.message || 'Failed'}`);
+            }
+        }
+
+        const action = agentId ? 'Reassigned' : 'Unassigned';
+        if (successCount > 0) message.success(`${action} ${successCount} order(s)`);
+        if (errors.length > 0) {
+            Modal.warning({
+                title: 'Some orders could not be updated',
+                content: <div>{errors.map((msg, i) => <div key={i} style={{ marginBottom: 4, fontSize: 12 }}>{msg}</div>)}</div>,
+            });
+        }
+
+        setBulkReassignLoading(false);
+        setShowBulkReassignModal(false);
+        setSelectedRowKeys([]);
+        setBulkReassignAgentId(undefined);
         fetchOrders();
     };
 
@@ -1070,6 +1115,14 @@ export default function OrdersPage() {
                         <Button type="primary" size="small" icon={<UserOutlined />}
                             loading={assignLoading} onClick={handleBulkAssign}>
                             Assign
+                        </Button>
+                        <Button type="primary" ghost size="small" icon={<SwapOutlined />}
+                            loading={bulkReassignLoading}
+                            onClick={() => {
+                                setShowBulkReassignModal(true);
+                                setBulkReassignAgentId(undefined);
+                            }}>
+                            Bulk Reassign/Unassign
                         </Button>
                         <Divider type="vertical" />
                         <Button size="small" icon={<SendOutlined />}
@@ -2195,6 +2248,59 @@ export default function OrdersPage() {
                             ))}
                         </Select>
                     </div>
+                )}
+            </Modal>
+
+            {/* ── Bulk Reassign/Unassign Modal ── */}
+            <Modal
+                title={<span><SwapOutlined /> Bulk Reassign {selectedRowKeys.length} Orders</span>}
+                open={showBulkReassignModal}
+                onCancel={() => setShowBulkReassignModal(false)}
+                footer={[
+                    <Button key="unassign" danger loading={bulkReassignLoading}
+                        onClick={() => handleBulkReassign(null)}>
+                        Unassign All
+                    </Button>,
+                    <Button key="cancel" onClick={() => setShowBulkReassignModal(false)}>
+                        Cancel
+                    </Button>,
+                    <Button key="reassign" type="primary" loading={bulkReassignLoading}
+                        disabled={!bulkReassignAgentId}
+                        onClick={() => handleBulkReassign(bulkReassignAgentId)}
+                        style={{ background: '#8B5A2B', borderColor: '#8B5A2B' }}>
+                        Reassign to Selected Agent
+                    </Button>,
+                ]}
+                width={440}
+            >
+                {selectedRowKeys.length === 0 ? (
+                    <Empty description="No orders selected" />
+                ) : (
+                    <>
+                        <p style={{ marginBottom: 16 }}>
+                            Selected: <strong>{selectedRowKeys.length} orders</strong>
+                        </p>
+                        <p style={{ marginBottom: 12, fontSize: 12, color: '#666' }}>
+                            Assigned: {orders.filter((o: any) => selectedRowKeys.includes(o.id) && o.assigned_to_name).length} |
+                            Unassigned: {orders.filter((o: any) => selectedRowKeys.includes(o.id) && !o.assigned_to_name).length}
+                        </p>
+                        <Text style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 12 }}>Select agent to reassign to:</Text>
+                        <Select
+                            placeholder="Select agent to reassign..."
+                            style={{ width: '100%' }}
+                            value={bulkReassignAgentId}
+                            onChange={setBulkReassignAgentId}
+                            showSearch
+                            optionFilterProp="children"
+                            options={agents.map((a: any) => ({
+                                value: a.id,
+                                label: a.full_name || a.fullName || a.username
+                            }))}
+                        />
+                        <p style={{ marginTop: 16, fontSize: 12, color: '#999' }}>
+                            Note: All selected orders will be unassigned first, then reassigned if an agent is chosen.
+                        </p>
+                    </>
                 )}
             </Modal>
         </div>
