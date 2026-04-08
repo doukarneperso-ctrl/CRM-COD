@@ -526,12 +526,9 @@ export async function handleColiixWebhook(req: Request, res: Response): Promise<
             return;
         }
 
-        // Detect CRM status using keyword matching (works with any Coliix state)
         const crmStatus = detectCrmStatus(state);
-
         logger.info(`[COLIIX WEBHOOK] Tracking: ${trackingCode} | Coliix: ${state} | CRM: ${crmStatus}`);
 
-        // Find order by tracking number
         const orderResult = await query(
             `SELECT id, shipping_status, assigned_to, courier_status FROM orders WHERE tracking_number = $1 AND deleted_at IS NULL`,
             [trackingCode]
@@ -545,38 +542,61 @@ export async function handleColiixWebhook(req: Request, res: Response): Promise<
 
         const order = orderResult.rows[0];
         const oldStatus = order.shipping_status;
+        const incomingNote = typeof note === 'string' ? note.trim() : '';
+        const incomingDate = typeof datereported === 'string' ? datereported.trim() : '';
+        const shippingChanged = oldStatus !== crmStatus;
+        const courierChanged = (order.courier_status || '') !== state;
 
-        if (oldStatus === crmStatus) {
-            res.status(200).send('OK'); // Already at this status
+        if (!shippingChanged && !courierChanged && !incomingNote && !incomingDate) {
+            res.status(200).send('OK');
             return;
         }
 
-        // Update shipping status + courier_status (already saved above, but ensure it's set)
-        const updateFields: string[] = ['shipping_status = $1', 'updated_at = NOW()', `courier_status = '${state.replace(/'/g, "''")}'`, 'courier_status_at = NOW()'];
-        if (crmStatus === 'delivered') {
-            updateFields.push('delivered_at = NOW()');
+        const updateFields: string[] = ['updated_at = NOW()'];
+        const params: any[] = [];
+        let idx = 1;
+
+        if (shippingChanged) {
+            updateFields.push(`shipping_status = $${idx}`);
+            params.push(crmStatus);
+            idx++;
+        }
+        if (courierChanged) {
+            updateFields.push(`courier_status = $${idx}`);
+            params.push(state);
+            idx++;
+            updateFields.push('courier_status_at = NOW()');
+        }
+        if (shippingChanged && crmStatus === 'delivered') {
+            updateFields.push('delivered_at = COALESCE(delivered_at, NOW())');
             updateFields.push("payment_status = 'paid'");
         }
-        if (crmStatus === 'returned') {
-            updateFields.push('returned_at = NOW()');
+        if (shippingChanged && crmStatus === 'returned') {
+            updateFields.push('returned_at = COALESCE(returned_at, NOW())');
         }
 
-        await query(`UPDATE orders SET ${updateFields.join(', ')} WHERE id = $2`, [crmStatus, order.id]);
+        params.push(order.id);
+        await query(`UPDATE orders SET ${updateFields.join(', ')} WHERE id = $${idx}`, params);
 
-        await insertColiixHistoryIfMissing(
-            String(order.id),
-            order.courier_status || oldStatus,
-            state,
-            `Coliix: ${state}${datereported ? ` @ ${datereported}` : ''}${note ? ` — ${note}` : ''}`
-        );
+        if (courierChanged || incomingNote || incomingDate) {
+            await insertColiixHistoryIfMissing(
+                String(order.id),
+                order.courier_status || oldStatus,
+                state,
+                `Coliix: ${state}${incomingDate ? ` @ ${incomingDate}` : ''}${incomingNote ? ` - ${incomingNote}` : ''}`
+            );
+        }
 
         await createAuditLog({
-            tableName: 'orders', recordId: String(order.id), action: 'coliix_webhook',
-            userId: null, oldValues: { shippingStatus: oldStatus }, newValues: { shippingStatus: crmStatus },
-            details: `Coliix state: ${state} → ${crmStatus}`,
+            tableName: 'orders',
+            recordId: String(order.id),
+            action: 'coliix_webhook',
+            userId: null,
+            oldValues: { shippingStatus: oldStatus },
+            newValues: { shippingStatus: crmStatus },
+            details: `Coliix state: ${state} -> ${crmStatus}`,
         });
 
-        // Trigger commission on delivery
         if (crmStatus === 'delivered' && order.assigned_to) {
             try {
                 await createCommissionForOrder(String(order.id), String(order.assigned_to));
@@ -595,11 +615,12 @@ export async function handleColiixWebhook(req: Request, res: Response): Promise<
             }
         }
 
-        // Notify managers on return
         if (crmStatus === 'returned') {
             await notifyManagers({
-                type: 'order_status_changed', title: 'Order Returned via Coliix',
-                message: `Tracking ${trackingCode} returned`, data: { orderId: order.id, trackingCode }
+                type: 'order_status_changed',
+                title: 'Order Returned via Coliix',
+                message: `Tracking ${trackingCode} returned`,
+                data: { orderId: order.id, trackingCode },
             });
         }
 
