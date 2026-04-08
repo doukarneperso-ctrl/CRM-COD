@@ -218,7 +218,10 @@ export default function OrdersPage() {
         setLoading(true);
         try {
             const params: any = { pageSize: 999 };
-            Object.entries(filters).forEach(([k, v]) => { if (v) params[k] = v; });
+            Object.entries(filters).forEach(([k, v]) => {
+                // Shipping filter is handled client-side to support courier statuses + empty state.
+                if (v && k !== 'shippingStatus') params[k] = v;
+            });
             const res = await api.get('/orders', { params });
             setOrders(res.data.data);
         } catch { message.error('Failed to load orders'); }
@@ -416,6 +419,29 @@ export default function OrdersPage() {
             // Refresh view modal if open
             if (viewModalOrder?.id === orderId) openViewModal(orderId);
         } catch (err: any) { message.error(err.response?.data?.error?.message || 'Update failed'); }
+    };
+
+    const getShippingDisplay = (order: any) => {
+        const courier = (order?.courier_status || '').trim();
+        if (courier) {
+            const k = courier.toLowerCase();
+            let color = 'blue';
+            if (/(deliv|livr|success|ok|done)/i.test(k)) color = 'green';
+            else if (/(return|retour|refus|cancel|failed|echec)/i.test(k)) color = 'red';
+            else if (/(transit|route|ship|pickup|ramass|collect)/i.test(k)) color = 'gold';
+            return { key: `courier:${k}`, label: courier, color };
+        }
+
+        const status = (order?.shipping_status || '').trim();
+        if (!status || status === 'not_shipped') {
+            return { key: '__empty__', label: 'Not shipped', color: 'default' };
+        }
+
+        return {
+            key: `sys:${status}`,
+            label: status.replace(/_/g, ' '),
+            color: shippingColors[status] || 'default',
+        };
     };
 
     // View modal — shows all info, no history
@@ -699,6 +725,21 @@ export default function OrdersPage() {
             });
     }, [orders]);
 
+    const shippingFilterOptions = useMemo(() => {
+        const map = new Map<string, string>();
+        map.set('__empty__', 'Empty / Not shipped');
+        orders.forEach((o: any) => {
+            const s = getShippingDisplay(o);
+            if (s.key !== '__empty__') map.set(s.key, s.label);
+        });
+        return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
+    }, [orders]);
+
+    const filteredDisplayOrders = useMemo(() => {
+        if (!filters.shippingStatus) return displayOrders;
+        return displayOrders.filter((o: any) => getShippingDisplay(o).key === filters.shippingStatus);
+    }, [displayOrders, filters.shippingStatus]);
+
     // Column toggle dropdown items
     const columnToggleItems: MenuProps['items'] = ALL_COLUMN_KEYS.map(key => ({
         key,
@@ -845,24 +886,26 @@ export default function OrdersPage() {
         {
             title: 'SHIPPING', key: 'shipping', width: 125,
             render: (_: any, r: any) => {
-                // Build options with courier status as display label when available
-                const shippingOptions = [
-                    { value: 'not_shipped', label: 'Not Shipped' },
-                    { value: 'pickup_scheduled', label: r.courier_status && r.shipping_status === 'pickup_scheduled' ? `🚚 ${r.courier_status}` : 'Pickup' },
-                    { value: 'in_transit', label: r.courier_status && r.shipping_status === 'in_transit' ? `🚚 ${r.courier_status}` : 'In Transit' },
-                    { value: 'delivered', label: r.courier_status && r.shipping_status === 'delivered' ? `✅ ${r.courier_status}` : 'Delivered' },
-                    { value: 'returned', label: r.courier_status && r.shipping_status === 'returned' ? `📦 ${r.courier_status}` : 'Returned' },
-                ];
+                const shipping = getShippingDisplay(r);
                 return (
-                    <Select
-                        value={r.shipping_status}
-                        size="small"
-                        variant="borderless"
-                        style={{ width: '100%', fontSize: 11 }}
-                        onChange={(v: string) => updateShipping(r.id, v)}
-                        getPopupContainer={() => document.body}
-                        options={shippingOptions}
-                    />
+                    <Tag
+                        color={shipping.color}
+                        style={{
+                            borderRadius: 4,
+                            border: 'none',
+                            textTransform: 'capitalize' as const,
+                            fontSize: 11,
+                            margin: 0,
+                            maxWidth: 120,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            display: 'inline-block',
+                        }}
+                        title={shipping.label}
+                    >
+                        {shipping.label}
+                    </Tag>
                 );
             },
         },
@@ -1060,7 +1103,7 @@ export default function OrdersPage() {
                     <Col xs={12} sm={12} md={3}>
                         <Select placeholder="Shipping" allowClear style={{ width: '100%' }} size="small" getPopupContainer={() => document.body}
                             onChange={(v: string) => setFilters(f => ({ ...f, shippingStatus: v || '' }))}
-                            options={['not_shipped', 'pickup_scheduled', 'in_transit', 'delivered', 'returned'].map(s => ({ value: s, label: s.replace(/_/g, ' ') }))} />
+                            options={shippingFilterOptions} />
                     </Col>
                     <Col xs={12} sm={12} md={4}>
                         <Select placeholder="Agent" allowClear showSearch optionFilterProp="label" style={{ width: '100%' }} size="small" getPopupContainer={() => document.body}
@@ -1156,9 +1199,9 @@ export default function OrdersPage() {
             )}
 
             {/* Table */}
-            <Table
-                columns={columns}
-                dataSource={displayOrders}
+                <Table
+                    columns={columns}
+                    dataSource={filteredDisplayOrders}
                 rowKey="id"
                 loading={loading}
                 rowSelection={{
