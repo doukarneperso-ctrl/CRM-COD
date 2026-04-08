@@ -40,7 +40,7 @@ const updateProductSchema = z.object({
         size: z.string().optional(),
         color: z.string().optional(),
         sku: z.string().optional(),
-        price: z.number().min(0),
+        price: z.number().min(0).optional(),
         costPrice: z.number().min(0).optional(),
         stock: z.number().int().min(0).optional(),
         lowStockThreshold: z.number().int().min(0).optional(),
