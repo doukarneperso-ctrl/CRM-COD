@@ -35,10 +35,13 @@ async function insertColiixHistoryIfMissing(
 ) {
     await query(
         `INSERT INTO status_history (order_id, field, old_value, new_value, changed_by, note)
-         SELECT $1, 'courier_status', $2, $3, NULL, $4
+         SELECT $1::uuid, 'courier_status', $2::text, $3::text, NULL::uuid, $4::text
          WHERE NOT EXISTS (
            SELECT 1 FROM status_history
-           WHERE order_id = $1 AND field = 'courier_status' AND new_value = $3 AND note = $4
+           WHERE order_id = $1::uuid
+             AND field = 'courier_status'
+             AND new_value::text = $3::text
+             AND note::text = $4::text
          )`,
         [orderId, oldValue || '', newValue || '', note || '']
     );
