@@ -37,11 +37,29 @@ async function getColiixToken(): Promise<string> {
  *   anything else         → in_transit (still in progress)
  */
 export function detectCrmStatus(coliixState: string): 'delivered' | 'returned' | 'in_transit' {
-    const s = coliixState.toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // strip accents: é→e, ô→o
+    const s = (coliixState || '').toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // strip accents
 
-    if (s.includes('livr')) return 'delivered';
-    if (s.includes('refus') || s.includes('retour') || s.includes('annul')) return 'returned';
+    // Returned/cancel-like outcomes must win over any "delivered" wording.
+    if (s.includes('refus') || s.includes('retour') || s.includes('annul') || s.includes('echec')) {
+        return 'returned';
+    }
+
+    // Delivered means truly delivered ("Livre"), not generic "livraison"/"en cours".
+    const hasDeliveredWord =
+        /\blivre\b/.test(s) ||
+        /\blivree\b/.test(s) ||
+        /\blivres\b/.test(s) ||
+        s.includes('colis livre');
+
+    // Guard against negated delivered phrases.
+    const hasDeliveredNegation =
+        /\bnon livre\b/.test(s) ||
+        /\bpas livre\b/.test(s) ||
+        /\bnon livree\b/.test(s) ||
+        /\bpas livree\b/.test(s);
+
+    if (hasDeliveredWord && !hasDeliveredNegation) return 'delivered';
     return 'in_transit';
 }
 
@@ -165,3 +183,4 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
         note: '',
     };
 }
+
