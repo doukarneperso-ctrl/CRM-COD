@@ -11,7 +11,7 @@ import logger from '../utils/logger';
 import { z } from 'zod';
 import { deductStock, restoreStock, checkStockAvailability } from '../services/stock.service';
 import { isValidConfirmationTransition, isValidShippingTransition, handleUnreachable, getOrderItems } from '../services/order.service';
-import { createCommissionForOrder } from '../services/commission.service';
+import { createCommissionForOrder, voidPendingCommissionsForOrder } from '../services/commission.service';
 import { manualAssign } from '../services/assignment.service';
 import { createNotification, notifyManagers } from '../services/notification.service';
 
@@ -790,6 +790,15 @@ router.put('/:id/shipping-status', requireAuth, requirePermission('update_order_
                 }
             } catch (commErr) {
                 logger.error('Commission calculation failed (non-blocking):', commErr);
+            }
+        }
+
+        // If an order is corrected away from delivered, void pending commission rows.
+        if (oldStatus === 'delivered' && status !== 'delivered') {
+            try {
+                await voidPendingCommissionsForOrder(id, `Auto-void: shipping corrected ${oldStatus} -> ${status}`);
+            } catch (commErr) {
+                logger.error('Commission void failed (non-blocking):', commErr);
             }
         }
 

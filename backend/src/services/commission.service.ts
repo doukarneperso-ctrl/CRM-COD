@@ -165,3 +165,30 @@ export async function createCommissionForOrder(
 
     return commissionId;
 }
+
+/**
+ * Void pending commissions for an order when status is corrected away from delivered.
+ * Paid commissions are intentionally not touched automatically.
+ */
+export async function voidPendingCommissionsForOrder(
+    orderId: string,
+    reason: string
+): Promise<number> {
+    const result = await pool.query(
+        `UPDATE commissions
+         SET status = 'rejected',
+             review_note = CASE
+               WHEN review_note IS NULL OR review_note = '' THEN $2
+               ELSE review_note || ' | ' || $2
+             END,
+             reviewed_at = NOW(),
+             updated_at = NOW()
+         WHERE order_id = $1
+           AND status IN ('new', 'approved')
+           AND deleted_at IS NULL
+         RETURNING id`,
+        [orderId, reason]
+    );
+
+    return result.rows.length;
+}

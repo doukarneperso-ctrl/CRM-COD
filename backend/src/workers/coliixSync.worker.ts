@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { query } from '../config/database';
 import { trackOrder, detectCrmStatus } from '../services/delivery.service';
-import { createCommissionForOrder } from '../services/commission.service';
+import { createCommissionForOrder, voidPendingCommissionsForOrder } from '../services/commission.service';
 import { createAuditLog } from '../services/audit.service';
 import { notifyManagers } from '../services/notification.service';
 import { emitDeliveryStatusUpdated } from '../services/socket.service';
@@ -23,6 +23,44 @@ function sleep(ms: number) {
 export function startColiixSyncWorker(): void {
     const runColiixSync = async () => {
         try {
+            // Reconcile existing orders from stored courier_status using latest mapping.
+            // This fixes historical misclassification (e.g. non-delivered statuses previously marked as delivered).
+            const reconcileResult = await query(
+                `SELECT id, order_number, shipping_status, courier_status, assigned_to
+                 FROM orders
+                 WHERE tracking_number IS NOT NULL
+                   AND tracking_number != ''
+                   AND courier_status IS NOT NULL
+                   AND courier_status != ''
+                   AND deleted_at IS NULL`
+            );
+
+            for (const order of reconcileResult.rows) {
+                const mapped = detectCrmStatus(order.courier_status);
+                if (!mapped || mapped === order.shipping_status) continue;
+
+                const fields: string[] = ['shipping_status = $1', 'updated_at = NOW()'];
+                if (mapped === 'delivered') {
+                    fields.push('delivered_at = COALESCE(delivered_at, NOW())');
+                    fields.push("payment_status = 'paid'");
+                }
+                if (mapped === 'returned') {
+                    fields.push('returned_at = COALESCE(returned_at, NOW())');
+                }
+                await query(`UPDATE orders SET ${fields.join(', ')} WHERE id = $2`, [mapped, order.id]);
+
+                if (mapped === 'delivered' && order.assigned_to) {
+                    try { await createCommissionForOrder(String(order.id), String(order.assigned_to)); } catch { /* non-blocking */ }
+                }
+                if (order.shipping_status === 'delivered' && mapped !== 'delivered') {
+                    try {
+                        await voidPendingCommissionsForOrder(
+                            String(order.id),
+                            `Auto-void: sync reconciliation ${order.shipping_status} -> ${mapped}`
+                        );
+                    } catch { /* non-blocking */ }
+                }
+            }
 
             // Get ALL orders with tracking numbers that are not in a final state
             const ordersResult = await query(
@@ -121,6 +159,16 @@ export function startColiixSyncWorker(): void {
                                 await createCommissionForOrder(String(order.id), String(order.assigned_to));
                             } catch (commErr) {
                                 logger.error(`[COLIIX SYNC] Commission calc failed for ${order.order_number}:`, commErr);
+                            }
+                        }
+                        if (order.shipping_status === 'delivered' && crmStatus !== 'delivered') {
+                            try {
+                                await voidPendingCommissionsForOrder(
+                                    String(order.id),
+                                    `Auto-void: Coliix sync corrected ${order.shipping_status} -> ${crmStatus}`
+                                );
+                            } catch (commErr) {
+                                logger.error(`[COLIIX SYNC] Commission void failed for ${order.order_number}:`, commErr);
                             }
                         }
 

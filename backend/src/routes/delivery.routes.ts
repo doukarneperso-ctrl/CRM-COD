@@ -6,7 +6,7 @@ import { validateBody } from '../middleware/validate';
 import logger from '../utils/logger';
 import { z } from 'zod';
 import { exportOrder, trackOrder, detectCrmStatus } from '../services/delivery.service';
-import { createCommissionForOrder } from '../services/commission.service';
+import { createCommissionForOrder, voidPendingCommissionsForOrder } from '../services/commission.service';
 import { createAuditLog } from '../services/audit.service';
 import { notifyManagers } from '../services/notification.service';
 
@@ -407,7 +407,6 @@ router.post('/sync-all', requireAuth, requirePermission('manage_settings'), asyn
              FROM orders
              WHERE tracking_number IS NOT NULL
                AND tracking_number != ''
-               AND shipping_status NOT IN ('delivered', 'returned')
                AND deleted_at IS NULL
              ORDER BY shipped_at ASC`
         );
@@ -456,6 +455,12 @@ router.post('/sync-all', requireAuth, requirePermission('manage_settings'), asyn
 
                 params.push(order.id);
                 await query(`UPDATE orders SET ${fields.join(', ')} WHERE id = $${idx}`, params);
+                if (order.shipping_status === 'delivered' && crmStatus !== 'delivered') {
+                    await voidPendingCommissionsForOrder(
+                        String(order.id),
+                        `Auto-void: sync-all corrected ${order.shipping_status} -> ${crmStatus}`
+                    );
+                }
                 updated++;
 
                 logger.info(`[SYNC-ALL] ${order.order_number}: ${result.state} → ${crmStatus}`);
@@ -494,7 +499,7 @@ export async function handleColiixWebhook(req: Request, res: Response): Promise<
 
         // Find order by tracking number
         const orderResult = await query(
-            `SELECT id, shipping_status, assigned_to FROM orders WHERE tracking_number = $1 AND deleted_at IS NULL`,
+            `SELECT id, shipping_status, assigned_to, courier_status FROM orders WHERE tracking_number = $1 AND deleted_at IS NULL`,
             [trackingCode]
         );
 
@@ -542,6 +547,16 @@ export async function handleColiixWebhook(req: Request, res: Response): Promise<
                 await createCommissionForOrder(String(order.id), String(order.assigned_to));
             } catch (commErr) {
                 logger.error('[COLIIX WEBHOOK] Commission calc failed:', commErr);
+            }
+        }
+        if (oldStatus === 'delivered' && crmStatus !== 'delivered') {
+            try {
+                await voidPendingCommissionsForOrder(
+                    String(order.id),
+                    `Auto-void: webhook corrected ${oldStatus} -> ${crmStatus}`
+                );
+            } catch (commErr) {
+                logger.error('[COLIIX WEBHOOK] Commission void failed:', commErr);
             }
         }
 
