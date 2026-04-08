@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { query } from '../config/database';
 import { requireAuth } from '../middleware/auth';
 import { parsePagination, paginationMeta, paginationSQL } from '../utils/pagination';
+import { trackOrder } from '../services/delivery.service';
 import logger from '../utils/logger';
 
 const router = Router();
@@ -170,6 +171,79 @@ router.get('/customer-history', requireAuth, async (req: Request, res: Response)
     }
 });
 
+// ─── GET /api/call-centre/shipping-history/:id ─────
+// Shipping timeline for one assigned order (tracking API first, DB history fallback)
+router.get('/shipping-history/:id', requireAuth, async (req: Request, res: Response) => {
+    try {
+        const userId = req.session.userId!;
+        const orderRes = await query(
+            `SELECT id, order_number, tracking_number, courier_status
+             FROM orders
+             WHERE id = $1 AND assigned_to = $2 AND deleted_at IS NULL`,
+            [req.params.id, userId]
+        );
+
+        if (orderRes.rows.length === 0) {
+            res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } });
+            return;
+        }
+
+        const order = orderRes.rows[0];
+
+        // 1) Prefer live courier timeline when tracking number exists.
+        if (order.tracking_number) {
+            try {
+                const tracked = await trackOrder(order.tracking_number);
+                if (Array.isArray(tracked.history) && tracked.history.length > 0) {
+                    res.json({
+                        success: true,
+                        data: {
+                            orderId: order.id,
+                            orderNumber: order.order_number,
+                            tracking: order.tracking_number,
+                            source: 'courier',
+                            history: tracked.history,
+                        },
+                    });
+                    return;
+                }
+            } catch (trackErr: any) {
+                logger.warn('Call centre shipping-history track fallback to DB:', trackErr?.message || trackErr);
+            }
+        }
+
+        // 2) Fallback to stored CRM courier status history.
+        const histRes = await query(
+            `SELECT new_value, note, created_at
+             FROM status_history
+             WHERE order_id = $1 AND field = 'courier_status'
+             ORDER BY created_at ASC`,
+            [order.id]
+        );
+
+        const history = histRes.rows.map((h: any) => ({
+            status: h.new_value || '',
+            time: h.created_at,
+            etat: '',
+            note: h.note || '',
+        }));
+
+        res.json({
+            success: true,
+            data: {
+                orderId: order.id,
+                orderNumber: order.order_number,
+                tracking: order.tracking_number || null,
+                source: 'crm',
+                history,
+            },
+        });
+    } catch (error) {
+        logger.error('Call centre shipping history error:', error);
+        res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to load shipping history' } });
+    }
+});
+
 // ─── GET /api/call-centre/queue ───────────────────
 // Paginated queue of assigned orders, filterable by status tab
 router.get('/queue', requireAuth, async (req: Request, res: Response) => {
@@ -222,7 +296,7 @@ router.get('/queue', requireAuth, async (req: Request, res: Response) => {
         const [dataResult, countResult, countsResult, courierCountsResult] = await Promise.all([
             query(
                 `SELECT
-                    o.id, o.order_number, o.confirmation_status, o.shipping_status, o.courier_status,
+                    o.id, o.order_number, o.confirmation_status, o.shipping_status, o.courier_status, o.tracking_number,
                     o.final_amount, o.total_amount, o.created_at, o.note, o.delivery_notes,
                     o.discount, o.discount_type, o.shipping_cost, o.call_attempts,
                     c.full_name as customer_name, c.phone as customer_phone, c.city as customer_city,

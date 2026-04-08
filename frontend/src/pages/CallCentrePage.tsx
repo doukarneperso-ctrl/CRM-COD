@@ -281,27 +281,15 @@ export default function CallCentrePage() {
         setTrackingHistoryOpen(true);
         setTrackingHistoryLoading(true);
         try {
-            if (order?.tracking_number) {
-                const res = await api.get(`/delivery/track/${encodeURIComponent(order.tracking_number)}`);
-                setTrackingHistoryData(res.data?.data || null);
-            } else {
-                const res = await api.get(`/orders/${order.id}`);
-                const courierHistory = (res.data?.data?.statusHistory || [])
-                    .filter((h: any) => h.field === 'courier_status')
-                    .map((h: any) => ({
-                        status: h.new_value,
-                        time: h.created_at,
-                        etat: '',
-                        note: h.note || '',
-                    }));
-                setTrackingHistoryData({ history: courierHistory });
-                if (courierHistory.length === 0) {
-                    message.info('No courier timeline found for this order yet');
-                }
+            const res = await api.get(`/call-centre/shipping-history/${order.id}`);
+            const data = res.data?.data || { history: [] };
+            setTrackingHistoryData(data);
+            if (!Array.isArray(data.history) || data.history.length === 0) {
+                message.info('No shipping timeline found for this order yet');
             }
-        } catch {
+        } catch (err: any) {
             setTrackingHistoryData(null);
-            message.error('Failed to load shipping status history');
+            message.error(err?.response?.data?.error?.message || 'Failed to load shipping status history');
         } finally {
             setTrackingHistoryLoading(false);
         }
