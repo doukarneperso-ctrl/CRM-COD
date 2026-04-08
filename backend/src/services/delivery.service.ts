@@ -247,6 +247,31 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
         candidates.sort((a, b) => (b.score - a.score) || (b.text.length - a.text.length));
         return candidates[0].text;
     };
+    const extractPayloadComment = (payload: any): string => {
+        try {
+            const raw = JSON.stringify(payload || {});
+            if (!raw) return '';
+
+            // Common free-text patterns in Coliix payloads.
+            const patterns = [
+                /commentaire\s*[:=]\s*([^",}\]]+)/i,
+                /"informations?"\s*:\s*"([^"]+)"/i,
+                /"infos?"\s*:\s*"([^"]+)"/i,
+                /"note"\s*:\s*"([^"]+)"/i,
+            ];
+
+            for (const re of patterns) {
+                const m = raw.match(re);
+                if (!m?.[1]) continue;
+                const v = m[1].replace(/\\u00a0/g, ' ').replace(/\\"/g, '"').trim();
+                const cleaned = v.replace(/^commentaire\s*[:=]\s*/i, '').trim();
+                if (cleaned) return cleaned;
+            }
+        } catch {
+            // ignore
+        }
+        return '';
+    };
     const normalizeHistoryArray = (raw: any): any[] => {
         if (Array.isArray(raw)) return raw;
         if (typeof raw === 'string') {
@@ -323,7 +348,7 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
         }
     }
 
-    const responseLevelNote = extractNote(data);
+    const responseLevelNote = extractNote(data) || extractPayloadComment(data);
     const responseLevelTime = pickFirstString(data, ['datereported', 'time', 'date', 'datetime', 'updated_at']);
     if (normalized.length > 0) {
         const i = normalized.length - 1;
