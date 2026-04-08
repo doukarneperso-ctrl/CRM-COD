@@ -172,7 +172,11 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
     const crmStatus = detectCrmStatus(state);
     
     const extractNote = (m: any): string => {
-        const candidates = [m?.note, m?.notes, m?.comment, m?.commentaire, m?.observation, m?.obs, m?.motif, m?.description];
+        const candidates = [
+            m?.note, m?.notes, m?.comment, m?.commentaire,
+            m?.observation, m?.obs, m?.motif, m?.description,
+            m?.info, m?.infos, m?.information, m?.informations,
+        ];
         const first = candidates.find((v: any) => typeof v === 'string' && v.trim() !== '');
         return first ? String(first).trim() : '';
     };

@@ -10,6 +10,7 @@ import { normalizePhone } from '../utils/phone';
 import logger from '../utils/logger';
 import { z } from 'zod';
 import { deductStock, restoreStock, checkStockAvailability } from '../services/stock.service';
+import { trackOrder } from '../services/delivery.service';
 import { isValidConfirmationTransition, isValidShippingTransition, handleUnreachable, getOrderItems } from '../services/order.service';
 import { createCommissionForOrder, voidPendingCommissionsForOrder } from '../services/commission.service';
 import { manualAssign } from '../services/assignment.service';
@@ -38,6 +39,23 @@ const updateStatusSchema = z.object({
     status: z.string().min(1),
     note: z.string().optional(),
 });
+
+async function insertColiixHistoryIfMissing(
+    orderId: string,
+    oldValue: string,
+    newValue: string,
+    note: string
+) {
+    await query(
+        `INSERT INTO status_history (order_id, field, old_value, new_value, changed_by, note)
+         SELECT $1, 'courier_status', $2, $3, NULL, $4
+         WHERE NOT EXISTS (
+           SELECT 1 FROM status_history
+           WHERE order_id = $1 AND field = 'courier_status' AND new_value = $3 AND note = $4
+         )`,
+        [orderId, oldValue || '', newValue || '', note || '']
+    );
+}
 
 // Generate sequential order number
 async function nextOrderNumber(): Promise<string> {
@@ -186,6 +204,25 @@ router.get('/:id', requireAuth, requirePermission('view_orders'), async (req: Re
         if (result.rows.length === 0) {
             res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } });
             return;
+        }
+
+        // On-demand Coliix timeline backfill for this order (keeps CRM history aligned with courier history).
+        try {
+            const order = result.rows[0];
+            if (order.tracking_number) {
+                const tr = await trackOrder(order.tracking_number);
+                if (Array.isArray(tr.history) && tr.history.length > 0) {
+                    for (let i = 0; i < tr.history.length; i++) {
+                        const h = tr.history[i];
+                        if (!h?.status) continue;
+                        const prev = i > 0 ? (tr.history[i - 1]?.status || '') : (order.courier_status || '');
+                        const note = `Coliix: ${h.status}${h.time ? ` @ ${h.time}` : ''}${h.note ? ` - ${h.note}` : ''}`;
+                        await insertColiixHistoryIfMissing(String(order.id), prev, h.status, note);
+                    }
+                }
+            }
+        } catch (trackErr: any) {
+            logger.warn('Order history Coliix backfill skipped:', trackErr?.message || trackErr);
         }
 
         // Get status history
