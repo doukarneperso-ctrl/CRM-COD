@@ -182,6 +182,13 @@ export default function ProductsPage() {
             await api.put(`/products/${editProduct.id}`, {
                 ...values,
                 imageUrl: imageUrls[0] || editProduct.image_url || undefined,
+                variants: variantsList.map(v => ({
+                    id: v.id,
+                    size: v.size, color: v.color, sku: v.sku,
+                    price: v.price, costPrice: v.costPrice,
+                    stock: v.stock, lowStockThreshold: v.lowStockThreshold || 5,
+                    isActive: v.isActive !== undefined ? v.isActive : true,
+                })),
             });
             message.success('Product updated');
             setModalOpen(false);

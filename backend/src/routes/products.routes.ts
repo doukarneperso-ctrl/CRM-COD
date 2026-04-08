@@ -35,6 +35,17 @@ const updateProductSchema = z.object({
     sku: z.string().max(100).optional(),
     imageUrl: z.string().optional(),
     isActive: z.boolean().optional(),
+    variants: z.array(z.object({
+        id: z.string().optional(),
+        size: z.string().optional(),
+        color: z.string().optional(),
+        sku: z.string().optional(),
+        price: z.number().min(0),
+        costPrice: z.number().min(0).optional(),
+        stock: z.number().int().min(0).optional(),
+        lowStockThreshold: z.number().int().min(0).optional(),
+        isActive: z.boolean().optional(),
+    })).optional(),
 });
 
 const addVariantSchema = z.object({
@@ -194,32 +205,108 @@ router.put('/:id', requireAuth, requirePermission('edit_products'), validateBody
     try {
         const { id } = req.params;
         const updates = req.body;
+        const variants = updates.variants || [];
 
-        const fields: string[] = [];
-        const values: any[] = [];
-        let idx = 1;
+        const product = await transaction(async (client) => {
+            // Update product fields
+            const fields: string[] = [];
+            const values: any[] = [];
+            let idx = 1;
 
-        if (updates.name !== undefined) { fields.push(`name = $${idx++}`); values.push(updates.name); }
-        if (updates.description !== undefined) { fields.push(`description = $${idx++}`); values.push(updates.description); }
-        if (updates.category !== undefined) { fields.push(`category = $${idx++}`); values.push(updates.category); }
-        if (updates.sku !== undefined) { fields.push(`sku = $${idx++}`); values.push(updates.sku); }
-        if (updates.imageUrl !== undefined) { fields.push(`image_url = $${idx++}`); values.push(updates.imageUrl); }
-        if (updates.isActive !== undefined) { fields.push(`is_active = $${idx++}`); values.push(updates.isActive); }
+            if (updates.name !== undefined) { fields.push(`name = $${idx++}`); values.push(updates.name); }
+            if (updates.description !== undefined) { fields.push(`description = $${idx++}`); values.push(updates.description); }
+            if (updates.category !== undefined) { fields.push(`category = $${idx++}`); values.push(updates.category); }
+            if (updates.sku !== undefined) { fields.push(`sku = $${idx++}`); values.push(updates.sku); }
+            if (updates.imageUrl !== undefined) { fields.push(`image_url = $${idx++}`); values.push(updates.imageUrl); }
+            if (updates.isActive !== undefined) { fields.push(`is_active = $${idx++}`); values.push(updates.isActive); }
 
-        if (fields.length === 0) {
-            res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'No fields to update' } });
-            return;
-        }
+            if (fields.length > 0) {
+                fields.push('updated_at = NOW()');
+                values.push(id);
 
-        fields.push('updated_at = NOW()');
-        values.push(id);
+                await client.query(
+                    `UPDATE products SET ${fields.join(', ')} WHERE id = $${idx} AND deleted_at IS NULL`,
+                    values
+                );
+            }
 
-        const result = await query(
-            `UPDATE products SET ${fields.join(', ')} WHERE id = $${idx} AND deleted_at IS NULL RETURNING *`,
-            values
-        );
+            // Handle variants if provided
+            if (variants && variants.length > 0) {
+                // Get existing variant IDs
+                const existingResult = await client.query(
+                    `SELECT id FROM product_variants WHERE product_id = $1`,
+                    [id]
+                );
+                const existingIds = new Set(existingResult.rows.map(r => r.id));
+                const incomingIds = new Set(variants.filter((v: any) => v.id).map((v: any) => v.id));
 
-        if (result.rows.length === 0) {
+                // Delete variants that were removed
+                for (const variantId of existingIds) {
+                    if (!incomingIds.has(variantId)) {
+                        await client.query(
+                            `DELETE FROM product_variants WHERE id = $1 AND product_id = $2`,
+                            [variantId, id]
+                        );
+                    }
+                }
+
+                // Create or update variants
+                for (const v of variants) {
+                    if (v.id) {
+                        // Update existing variant
+                        const updateFields: string[] = [];
+                        const updateVals: any[] = [];
+                        let vidx = 1;
+
+                        if (v.size !== undefined) { updateFields.push(`size = $${vidx++}`); updateVals.push(v.size || null); }
+                        if (v.color !== undefined) { updateFields.push(`color = $${vidx++}`); updateVals.push(v.color || null); }
+                        if (v.sku !== undefined) { updateFields.push(`sku = $${vidx++}`); updateVals.push(v.sku || null); }
+                        if (v.price !== undefined) { updateFields.push(`price = $${vidx++}`); updateVals.push(v.price); }
+                        if (v.costPrice !== undefined) { updateFields.push(`cost_price = $${vidx++}`); updateVals.push(v.costPrice || 0); }
+                        if (v.stock !== undefined) { updateFields.push(`stock = $${vidx++}`); updateVals.push(v.stock); }
+                        if (v.lowStockThreshold !== undefined) { updateFields.push(`low_stock_threshold = $${vidx++}`); updateVals.push(v.lowStockThreshold || 5); }
+                        if (v.isActive !== undefined) { updateFields.push(`is_active = $${vidx++}`); updateVals.push(v.isActive); }
+
+                        if (updateFields.length > 0) {
+                            updateVals.push(v.id);
+                            updateVals.push(id);
+                            await client.query(
+                                `UPDATE product_variants SET ${updateFields.join(', ')} WHERE id = $${vidx} AND product_id = $${vidx + 1}`,
+                                updateVals
+                            );
+                        }
+                    } else {
+                        // Create new variant
+                        await client.query(
+                            `INSERT INTO product_variants (product_id, size, color, sku, price, cost_price, stock, low_stock_threshold, is_active)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)`,
+                            [id, v.size || null, v.color || null, v.sku || null, v.price, v.costPrice || 0, v.stock || 0, v.lowStockThreshold || 5]
+                        );
+                    }
+                }
+            }
+
+            // Fetch updated product with variants
+            const result = await client.query(
+                `SELECT p.id, p.name, p.description, p.category, p.sku, p.image_url, p.is_active, p.created_at,
+                COALESCE(json_agg(
+                  json_build_object(
+                    'id', v.id, 'size', v.size, 'color', v.color, 'sku', v.sku,
+                    'price', v.price, 'costPrice', v.cost_price, 'stock', v.stock,
+                    'lowStockThreshold', v.low_stock_threshold, 'isActive', v.is_active
+                  ) ORDER BY v.created_at
+                ) FILTER (WHERE v.id IS NOT NULL), '[]') as variants
+         FROM products p
+         LEFT JOIN product_variants v ON v.product_id = p.id
+         WHERE p.id = $1
+         GROUP BY p.id`,
+                [id]
+            );
+
+            return result.rows[0];
+        });
+
+        if (!product) {
             res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Product not found' } });
             return;
         }
@@ -229,7 +316,7 @@ router.put('/:id', requireAuth, requirePermission('edit_products'), validateBody
             userId: req.session.userId!, newValues: updates,
         });
 
-        res.json({ success: true, data: result.rows[0] });
+        res.json({ success: true, data: product });
     } catch (error) {
         logger.error('Update product error:', error);
         res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to update product' } });
