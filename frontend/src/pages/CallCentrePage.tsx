@@ -803,7 +803,7 @@ export default function CallCentrePage() {
             },
         },
         {
-            title: '', key: 'shipping_history', width: 36,
+            title: 'HIS', key: 'shipping_history', width: 52,
             render: (_: any, r: any) => (
                 r.tracking_number ? (
                     <Tooltip title="View shipping status history">
@@ -815,7 +815,7 @@ export default function CallCentrePage() {
                                 e.stopPropagation();
                                 openTrackingHistory(r);
                             }}
-                            style={{ padding: 0, width: 20, height: 20, color: '#8B5A2B' }}
+                            style={{ padding: 0, width: 24, height: 24, color: '#8B5A2B' }}
                         />
                     </Tooltip>
                 ) : null
