@@ -684,7 +684,14 @@ export default function CallCentrePage() {
     const columns = [
         {
             title: 'ORDER', dataIndex: 'order_number', key: 'order_number', width: 100,
-            render: (v: string) => <Text strong style={{ fontSize: 12 }}>{v}</Text>,
+            render: (v: string, r: any) => (
+                <div style={{ lineHeight: 1.15 }}>
+                    <div style={{ fontSize: 10, opacity: 0.65, marginBottom: 2 }}>
+                        {r.created_at ? dayjs(r.created_at).format('DD/MM/YYYY') : '-'}
+                    </div>
+                    <Text strong style={{ fontSize: 12 }}>{v}</Text>
+                </div>
+            ),
         },
         {
             title: 'CUSTOMER', key: 'customer', width: 170,
