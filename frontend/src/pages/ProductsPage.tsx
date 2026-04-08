@@ -151,6 +151,14 @@ export default function ProductsPage() {
         message.success('Applied to all variants');
     };
 
+    const toNumberOr = (value: any, fallback: number) =>
+        (typeof value === 'number' && Number.isFinite(value)) ? value : fallback;
+
+    const toIntOr = (value: any, fallback: number) => {
+        if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.trunc(value));
+        return fallback;
+    };
+
     const handleCreate = async (values: any) => {
         if (variantsList.length === 0) {
             message.error('Please add at least one variant');
@@ -162,8 +170,10 @@ export default function ProductsPage() {
                 imageUrl: imageUrls[0] || undefined, // First image = thumbnail
                 variants: variantsList.map(v => ({
                     size: v.size, color: v.color, sku: v.sku,
-                    price: v.price, costPrice: v.costPrice,
-                    stock: v.stock, lowStockThreshold: v.lowStockThreshold || 5,
+                    price: toNumberOr(v.price, 0),
+                    costPrice: toNumberOr(v.costPrice, 0),
+                    stock: toIntOr(v.stock, 0),
+                    lowStockThreshold: toIntOr(v.lowStockThreshold, 5),
                 })),
             };
             await api.post('/products', payload);
@@ -191,15 +201,18 @@ export default function ProductsPage() {
             for (const variant of variantsList) {
                 if (variant.id && existingVariantIds.has(variant.id)) {
                     // Update existing variant
-                    await api.put(`/products/${editProduct.id}/variants/${variant.id}`, {
+                    const variantPayload = {
                         size: variant.size,
                         color: variant.color,
                         sku: variant.sku,
-                        price: variant.price,
-                        costPrice: variant.costPrice,
-                        stock: variant.stock,
-                        lowStockThreshold: variant.lowStockThreshold || 5,
+                        price: toNumberOr(variant.price, 0),
+                        costPrice: toNumberOr(variant.costPrice, 0),
+                        stock: toIntOr(variant.stock, 0),
+                        lowStockThreshold: toIntOr(variant.lowStockThreshold, 5),
                         isActive: variant.isActive !== undefined ? variant.isActive : true,
+                    };
+                    await api.put(`/products/${editProduct.id}/variants/${variant.id}`, {
+                        ...variantPayload,
                     });
                 } else if (!variant.id || variant.id.toString().startsWith('temp-')) {
                     // Create new variant (duplicated ones with tempId or no id)
@@ -207,10 +220,10 @@ export default function ProductsPage() {
                         size: variant.size,
                         color: variant.color,
                         sku: variant.sku,
-                        price: variant.price,
-                        costPrice: variant.costPrice,
-                        stock: variant.stock,
-                        lowStockThreshold: variant.lowStockThreshold || 5,
+                        price: toNumberOr(variant.price, 0),
+                        costPrice: toNumberOr(variant.costPrice, 0),
+                        stock: toIntOr(variant.stock, 0),
+                        lowStockThreshold: toIntOr(variant.lowStockThreshold, 5),
                     });
                 }
             }
