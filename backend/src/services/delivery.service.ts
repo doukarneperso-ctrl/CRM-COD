@@ -203,6 +203,10 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
                     if (nk.includes('comment') || nk.includes('info') || nk.includes('note') || nk.includes('motif') || nk.includes('observ')) {
                         return v.trim();
                     }
+                    const nv = norm(v);
+                    if (nv.includes('commentaire') || nv.includes('comment') || nv.includes('motif') || nv.includes('observation')) {
+                        return v.trim();
+                    }
                 } else if (v && typeof v === 'object') {
                     queue.push(v);
                 }
@@ -251,12 +255,40 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
     };
 
     const msgArray: any[] = flattenCandidates(msgArrayRaw).filter(Boolean);
-    const normalized = msgArray.map((m: any) => ({
+    const parsed = msgArray.map((m: any) => ({
         status: pickFirstString(m, ['status', 'statut', 'state', 'etat_colis', 'libelle', 'libellé']),
         time: pickFirstString(m, ['time', 'date', 'datetime', 'created_at', 'updated_at', 'datereported']),
         etat: pickFirstString(m, ['etat', 'payment', 'payment_status']),
         note: extractNote(m),
-    })).filter((h: any) => h.status);
+    }));
+
+    // Some Coliix payloads contain comment-only rows (no status).
+    // Attach those details to the latest status row so comments are never lost.
+    const normalized: ColiixHistoryEntry[] = [];
+    for (const row of parsed) {
+        const hasStatus = !!strOrEmpty(row.status);
+        const hasUsefulInfo = !!strOrEmpty(row.note) || !!strOrEmpty(row.time) || !!strOrEmpty(row.etat);
+
+        if (hasStatus) {
+            normalized.push({
+                status: strOrEmpty(row.status),
+                time: strOrEmpty(row.time),
+                etat: strOrEmpty(row.etat) || undefined,
+                note: strOrEmpty(row.note) || undefined,
+            });
+            continue;
+        }
+
+        if (hasUsefulInfo && normalized.length > 0) {
+            const last = normalized[normalized.length - 1];
+            if (!last.time && row.time) last.time = strOrEmpty(row.time);
+            if (!last.etat && row.etat) last.etat = strOrEmpty(row.etat);
+            if (row.note) {
+                const n = strOrEmpty(row.note);
+                last.note = last.note ? `${last.note} | ${n}` : n;
+            }
+        }
+    }
 
     const responseLevelNote = extractNote(data);
     const responseLevelTime = pickFirstString(data, ['datereported', 'time', 'date', 'datetime', 'updated_at']);
