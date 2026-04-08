@@ -151,11 +151,14 @@ export default function ProductsPage() {
         message.success('Applied to all variants');
     };
 
-    const toNumberOr = (value: any, fallback: number) =>
-        (typeof value === 'number' && Number.isFinite(value)) ? value : fallback;
+    const toNumberOr = (value: any, fallback: number) => {
+        const parsed = typeof value === 'string' ? Number(value) : value;
+        return (typeof parsed === 'number' && Number.isFinite(parsed)) ? parsed : fallback;
+    };
 
     const toIntOr = (value: any, fallback: number) => {
-        if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.trunc(value));
+        const parsed = typeof value === 'string' ? Number(value) : value;
+        if (typeof parsed === 'number' && Number.isFinite(parsed)) return Math.max(0, Math.trunc(parsed));
         return fallback;
     };
 
@@ -269,7 +272,14 @@ export default function ProductsPage() {
             name: p.name, description: p.description,
             category: p.category, sku: p.sku, isActive: p.is_active,
         });
-        setVariantsList(p.variants.map(v => ({ ...v, tempId: v.id })));
+        setVariantsList(p.variants.map(v => ({
+            ...v,
+            price: toNumberOr(v.price, 0),
+            costPrice: toNumberOr(v.costPrice, 0),
+            stock: toIntOr(v.stock, 0),
+            lowStockThreshold: toIntOr(v.lowStockThreshold, 5),
+            tempId: v.id,
+        })));
         setImageUrls(p.image_url ? [p.image_url] : []);
         setModalOpen(true);
     };
