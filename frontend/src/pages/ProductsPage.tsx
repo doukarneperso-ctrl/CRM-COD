@@ -162,6 +162,12 @@ export default function ProductsPage() {
         return fallback;
     };
 
+    const toOptionalString = (value: any) => {
+        if (value === null || value === undefined) return undefined;
+        const str = String(value);
+        return str.length > 0 ? str : undefined;
+    };
+
     const handleCreate = async (values: any) => {
         if (variantsList.length === 0) {
             message.error('Please add at least one variant');
@@ -172,7 +178,9 @@ export default function ProductsPage() {
                 ...values,
                 imageUrl: imageUrls[0] || undefined, // First image = thumbnail
                 variants: variantsList.map(v => ({
-                    size: v.size, color: v.color, sku: v.sku,
+                    size: toOptionalString(v.size),
+                    color: toOptionalString(v.color),
+                    sku: toOptionalString(v.sku),
                     price: toNumberOr(v.price, 0),
                     costPrice: toNumberOr(v.costPrice, 0),
                     stock: toIntOr(v.stock, 0),
@@ -193,10 +201,15 @@ export default function ProductsPage() {
         if (!editProduct) return;
         try {
             // Update product fields
-            await api.put(`/products/${editProduct.id}`, {
-                ...values,
+            const productPayload = {
+                name: toOptionalString(values.name),
+                description: toOptionalString(values.description),
+                category: toOptionalString(values.category),
+                sku: toOptionalString(values.sku),
+                isActive: values.isActive,
                 imageUrl: imageUrls[0] || editProduct.image_url || undefined,
-            });
+            };
+            await api.put(`/products/${editProduct.id}`, productPayload);
 
             // Handle variant changes separately
             const existingVariantIds = new Set(editProduct.variants.map((v: any) => v.id));
@@ -205,9 +218,9 @@ export default function ProductsPage() {
                 if (variant.id && existingVariantIds.has(variant.id)) {
                     // Update existing variant
                     const variantPayload = {
-                        size: variant.size,
-                        color: variant.color,
-                        sku: variant.sku,
+                        size: toOptionalString(variant.size),
+                        color: toOptionalString(variant.color),
+                        sku: toOptionalString(variant.sku),
                         price: toNumberOr(variant.price, 0),
                         costPrice: toNumberOr(variant.costPrice, 0),
                         stock: toIntOr(variant.stock, 0),
@@ -220,9 +233,9 @@ export default function ProductsPage() {
                 } else if (!variant.id || variant.id.toString().startsWith('temp-')) {
                     // Create new variant (duplicated ones with tempId or no id)
                     await api.post(`/products/${editProduct.id}/variants`, {
-                        size: variant.size,
-                        color: variant.color,
-                        sku: variant.sku,
+                        size: toOptionalString(variant.size),
+                        color: toOptionalString(variant.color),
+                        sku: toOptionalString(variant.sku),
                         price: toNumberOr(variant.price, 0),
                         costPrice: toNumberOr(variant.costPrice, 0),
                         stock: toIntOr(variant.stock, 0),
@@ -245,7 +258,10 @@ export default function ProductsPage() {
             setEditProduct(null);
             clearForm();
         } catch (err: any) {
-            message.error(err.response?.data?.error?.message || 'Update failed');
+            const apiError = err.response?.data?.error;
+            const detail = apiError?.details?.[0];
+            const detailMsg = detail?.path ? `${detail.path}: ${detail.message}` : detail?.message;
+            message.error(detailMsg || apiError?.message || 'Update failed');
         }
     };
 
