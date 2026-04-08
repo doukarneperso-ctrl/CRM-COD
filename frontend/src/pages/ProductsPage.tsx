@@ -179,17 +179,50 @@ export default function ProductsPage() {
     const handleUpdate = async (values: any) => {
         if (!editProduct) return;
         try {
+            // Update product fields
             await api.put(`/products/${editProduct.id}`, {
                 ...values,
                 imageUrl: imageUrls[0] || editProduct.image_url || undefined,
-                variants: variantsList.map(v => ({
-                    id: v.id,
-                    size: v.size, color: v.color, sku: v.sku,
-                    price: v.price, costPrice: v.costPrice,
-                    stock: v.stock, lowStockThreshold: v.lowStockThreshold || 5,
-                    isActive: v.isActive !== undefined ? v.isActive : true,
-                })),
             });
+
+            // Handle variant changes separately
+            const existingVariantIds = new Set(editProduct.variants.map((v: any) => v.id));
+
+            for (const variant of variantsList) {
+                if (variant.id && existingVariantIds.has(variant.id)) {
+                    // Update existing variant
+                    await api.put(`/products/${editProduct.id}/variants/${variant.id}`, {
+                        size: variant.size,
+                        color: variant.color,
+                        sku: variant.sku,
+                        price: variant.price,
+                        costPrice: variant.costPrice,
+                        stock: variant.stock,
+                        lowStockThreshold: variant.lowStockThreshold || 5,
+                        isActive: variant.isActive !== undefined ? variant.isActive : true,
+                    });
+                } else if (!variant.id || variant.id.toString().startsWith('temp-')) {
+                    // Create new variant (duplicated ones with tempId or no id)
+                    await api.post(`/products/${editProduct.id}/variants`, {
+                        size: variant.size,
+                        color: variant.color,
+                        sku: variant.sku,
+                        price: variant.price,
+                        costPrice: variant.costPrice,
+                        stock: variant.stock,
+                        lowStockThreshold: variant.lowStockThreshold || 5,
+                    });
+                }
+            }
+
+            // Delete removed variants
+            for (const variantId of existingVariantIds) {
+                const stillExists = variantsList.some((v: any) => v.id === variantId);
+                if (!stillExists) {
+                    await api.delete(`/products/${editProduct.id}/variants/${variantId}`);
+                }
+            }
+
             message.success('Product updated');
             setModalOpen(false);
             setEditProduct(null);
