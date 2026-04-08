@@ -94,7 +94,7 @@ router.get('/', requireAuth, requirePermission('view_products'), async (req: Req
                 ) FILTER (WHERE v.id IS NOT NULL), '[]') as variants,
                 COALESCE(SUM(v.stock), 0) as total_stock
          FROM products p
-         LEFT JOIN product_variants v ON v.product_id = p.id
+         LEFT JOIN product_variants v ON v.product_id = p.id AND v.is_active = true
          ${whereClause}
          GROUP BY p.id
          ORDER BY p.created_at DESC
@@ -133,7 +133,7 @@ router.get('/:id', requireAuth, requirePermission('view_products'), async (req: 
                 ) ORDER BY v.created_at
               ) FILTER (WHERE v.id IS NOT NULL), '[]') as variants
        FROM products p
-       LEFT JOIN product_variants v ON v.product_id = p.id
+       LEFT JOIN product_variants v ON v.product_id = p.id AND v.is_active = true
        WHERE p.id = $1 AND p.deleted_at IS NULL
        GROUP BY p.id`,
             [req.params.id]
@@ -328,10 +328,29 @@ router.delete('/:id/variants/:variantId', requireAuth, requirePermission('edit_p
     try {
         const { id, variantId } = req.params;
 
-        const result = await query(
-            `DELETE FROM product_variants WHERE id = $1 AND product_id = $2 RETURNING id`,
-            [variantId, id]
-        );
+        let result;
+        try {
+            result = await query(
+                `DELETE FROM product_variants WHERE id = $1 AND product_id = $2 RETURNING id`,
+                [variantId, id]
+            );
+        } catch (error: any) {
+            // If variant is referenced (e.g. in order_items), archive it instead of failing.
+            if (error?.code === '23503') {
+                result = await query(
+                    `UPDATE product_variants
+                     SET is_active = false, updated_at = NOW()
+                     WHERE id = $1 AND product_id = $2
+                     RETURNING id`,
+                    [variantId, id]
+                );
+                if (result.rows.length > 0) {
+                    res.json({ success: true, message: 'Variant archived' });
+                    return;
+                }
+            }
+            throw error;
+        }
 
         if (result.rows.length === 0) {
             res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Variant not found' } });
