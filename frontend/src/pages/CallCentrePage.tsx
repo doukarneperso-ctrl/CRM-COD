@@ -339,7 +339,7 @@ export default function CallCentrePage() {
     // ── Handle Call button click ──
     const handleCallClick = async (order: any) => {
         setSelectedOrder(order);
-        setCallNotes('');
+        setCallNotes(order.note || '');
         setDeliveryNotes(order.delivery_notes || '');
         setDiscountType(order.discount_type || 'fixed');
         setDiscountValue(order.discount || 0);
@@ -485,18 +485,36 @@ export default function CallCentrePage() {
     };
 
     // ── Standalone save for confirmed orders ──
+    const normalizeEditItem = (item: any) => ({
+        variantId: item?.variantId || null,
+        productName: String(item?.productName || '').trim(),
+        variantInfo: String(item?.variantInfo || '').trim(),
+        quantity: Number(item?.quantity || 1),
+        unitPrice: Number(item?.unitPrice || 0),
+    });
+
     const hasConfirmedOrderEdits = () => {
         if (!selectedOrder) return false;
         const originalPhone = formatPhone(selectedOrder.customer_phone || '');
         const originalCity = selectedOrder.customer_city || '';
         const originalAddress = selectedOrder.customer_address || '';
         const originalName = selectedOrder.customer_name || '';
+        const originalNote = selectedOrder.note || '';
+        const originalDiscount = Number(selectedOrder.discount || 0);
+
+        const currentItems = (editableItems || []).map(normalizeEditItem);
+        const originalItems = (selectedOrder.items || []).map(normalizeEditItem);
+        const itemsChanged = JSON.stringify(currentItems) !== JSON.stringify(originalItems);
+
         return (
             custPhone !== originalPhone ||
             custCity !== originalCity ||
             custAddress !== originalAddress ||
             custName !== originalName ||
-            deliveryNotes !== (selectedOrder.delivery_notes || '')
+            deliveryNotes !== (selectedOrder.delivery_notes || '') ||
+            callNotes !== originalNote ||
+            Number(discountValue || 0) !== originalDiscount ||
+            itemsChanged
         );
     };
 
@@ -1971,4 +1989,5 @@ export default function CallCentrePage() {
         </div>
     );
 }
+
 
