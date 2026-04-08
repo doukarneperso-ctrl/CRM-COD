@@ -186,7 +186,24 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
         ]);
         if (explicit) return explicit;
 
-        // Fallback: recursively inspect nested objects/arrays to find first useful comment/info string.
+        const cleanNote = (raw: string): string => {
+            const t = raw.trim();
+            const m1 = t.match(/(?:commentaire|comment|motif|observation)\s*:\s*(.+)$/i);
+            if (m1?.[1]?.trim()) return m1[1].trim();
+            return t;
+        };
+        const isNoise = (raw: string): boolean => {
+            const t = norm(raw);
+            if (!t) return true;
+            if (t === 'non paye' || t === 'paye') return true;
+            if (/^\d{4}[-/]\d{2}[-/]\d{2}/.test(t)) return true;
+            if (/^\d{1,2}:\d{2}/.test(t)) return true;
+            if (/^[a-z0-9-]{12,}$/.test(t)) return true; // tracking/code-like blobs
+            return false;
+        };
+
+        // Fallback: recursively inspect nested objects/arrays and score likely comment values.
+        const candidates: Array<{ text: string; score: number }> = [];
         const queue: any[] = [m];
         const seen = new Set<any>();
         while (queue.length > 0) {
@@ -197,22 +214,38 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
                 for (const item of cur) queue.push(item);
                 continue;
             }
+            const siblingCommentHint = Object.entries(cur).some(([sk, sv]) => {
+                if (typeof sv !== 'string') return false;
+                const nsk = norm(sk);
+                const nsv = norm(sv);
+                return (nsk.includes('type') || nsk.includes('label') || nsk.includes('title') || nsk.includes('name'))
+                    && (nsv.includes('comment') || nsv.includes('commentaire') || nsv.includes('motif') || nsv.includes('observation'));
+            });
             for (const [k, v] of Object.entries(cur)) {
                 if (typeof v === 'string' && v.trim()) {
                     const nk = norm(k);
-                    if (nk.includes('comment') || nk.includes('info') || nk.includes('note') || nk.includes('motif') || nk.includes('observ')) {
-                        return v.trim();
-                    }
                     const nv = norm(v);
-                    if (nv.includes('commentaire') || nv.includes('comment') || nv.includes('motif') || nv.includes('observation')) {
-                        return v.trim();
+                    const cleaned = cleanNote(v);
+                    if (!cleaned || isNoise(cleaned)) continue;
+
+                    let score = 0;
+                    if (nk.includes('comment') || nk.includes('note') || nk.includes('motif') || nk.includes('observ')) score += 10;
+                    if (nk.includes('info') || nk.includes('descr') || nk.includes('detail') || nk.includes('message')) score += 6;
+                    if (nk.includes('value') || nk.includes('text') || nk.includes('texte') || nk.includes('content')) score += 3;
+                    if (nv.includes('commentaire') || nv.includes('comment') || nv.includes('motif') || nv.includes('observation')) score += 7;
+                    if (siblingCommentHint && (nk.includes('value') || nk.includes('text') || nk.includes('texte') || nk.includes('message'))) score += 9;
+
+                    if (score > 0) {
+                        candidates.push({ text: cleaned, score });
                     }
                 } else if (v && typeof v === 'object') {
                     queue.push(v);
                 }
             }
         }
-        return '';
+        if (candidates.length === 0) return '';
+        candidates.sort((a, b) => (b.score - a.score) || (b.text.length - a.text.length));
+        return candidates[0].text;
     };
     const normalizeHistoryArray = (raw: any): any[] => {
         if (Array.isArray(raw)) return raw;
