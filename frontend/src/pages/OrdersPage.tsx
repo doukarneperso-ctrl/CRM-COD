@@ -456,6 +456,16 @@ export default function OrdersPage() {
     // History modal — shows history tabs
     const openHistoryModal = async (id: string, defaultTab = 'status') => {
         try {
+            // Force a fresh Coliix history import before loading CRM history.
+            try {
+                await api.post(`/orders/${id}/reconcile-courier-history`);
+            } catch (reconcileErr: any) {
+                const apiMsg = reconcileErr?.response?.data?.error?.message;
+                if (apiMsg) {
+                    message.warning(`Courier sync warning: ${apiMsg}`);
+                }
+            }
+
             const res = await api.get(`/orders/${id}`);
             setHistoryOrder(res.data.data);
             setHistoryActiveTab(defaultTab);

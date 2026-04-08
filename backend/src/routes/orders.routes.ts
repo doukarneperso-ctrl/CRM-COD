@@ -40,21 +40,32 @@ const updateStatusSchema = z.object({
     note: z.string().optional(),
 });
 
-async function insertColiixHistoryIfMissing(
-    orderId: string,
-    oldValue: string,
-    newValue: string,
-    note: string
-) {
-    await query(
-        `INSERT INTO status_history (order_id, field, old_value, new_value, changed_by, note)
-         SELECT $1, 'courier_status', $2, $3, NULL, $4
-         WHERE NOT EXISTS (
-           SELECT 1 FROM status_history
-           WHERE order_id = $1 AND field = 'courier_status' AND new_value = $3 AND note = $4
-         )`,
-        [orderId, oldValue || '', newValue || '', note || '']
-    );
+async function reconcileColiixHistoryForOrder(order: any): Promise<{ inserted: number; sourceCount: number }> {
+    if (!order?.tracking_number) return { inserted: 0, sourceCount: 0 };
+
+    const tr = await trackOrder(order.tracking_number);
+    if (!Array.isArray(tr.history) || tr.history.length === 0) return { inserted: 0, sourceCount: 0 };
+
+    let inserted = 0;
+    for (let i = 0; i < tr.history.length; i++) {
+        const h = tr.history[i];
+        if (!h?.status) continue;
+        const prev = i > 0 ? (tr.history[i - 1]?.status || '') : (order.courier_status || '');
+        const note = `Coliix: ${h.status}${h.time ? ` @ ${h.time}` : ''}${h.note ? ` - ${h.note}` : ''}`;
+
+        const result = await query(
+            `INSERT INTO status_history (order_id, field, old_value, new_value, changed_by, note)
+             SELECT $1, 'courier_status', $2, $3, NULL, $4
+             WHERE NOT EXISTS (
+               SELECT 1 FROM status_history
+               WHERE order_id = $1 AND field = 'courier_status' AND new_value = $3 AND note = $4
+             )`,
+            [String(order.id), prev || '', h.status || '', note || '']
+        );
+        inserted += result.rowCount || 0;
+    }
+
+    return { inserted, sourceCount: tr.history.length };
 }
 
 // Generate sequential order number
@@ -209,18 +220,7 @@ router.get('/:id', requireAuth, requirePermission('view_orders'), async (req: Re
         // On-demand Coliix timeline backfill for this order (keeps CRM history aligned with courier history).
         try {
             const order = result.rows[0];
-            if (order.tracking_number) {
-                const tr = await trackOrder(order.tracking_number);
-                if (Array.isArray(tr.history) && tr.history.length > 0) {
-                    for (let i = 0; i < tr.history.length; i++) {
-                        const h = tr.history[i];
-                        if (!h?.status) continue;
-                        const prev = i > 0 ? (tr.history[i - 1]?.status || '') : (order.courier_status || '');
-                        const note = `Coliix: ${h.status}${h.time ? ` @ ${h.time}` : ''}${h.note ? ` - ${h.note}` : ''}`;
-                        await insertColiixHistoryIfMissing(String(order.id), prev, h.status, note);
-                    }
-                }
-            }
+            await reconcileColiixHistoryForOrder(order);
         } catch (trackErr: any) {
             logger.warn('Order history Coliix backfill skipped:', trackErr?.message || trackErr);
         }
@@ -279,6 +279,52 @@ router.get('/:id', requireAuth, requirePermission('view_orders'), async (req: Re
     } catch (error) {
         logger.error('Get order error:', error);
         res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to get order' } });
+    }
+});
+
+// Force refresh Coliix timeline for one order (used by history UI before opening modal)
+router.post('/:id/reconcile-courier-history', requireAuth, requirePermission('view_orders'), async (req: Request, res: Response) => {
+    try {
+        const orderRes = await query(
+            `SELECT id, tracking_number, courier_status
+             FROM orders
+             WHERE id = $1 AND deleted_at IS NULL`,
+            [req.params.id]
+        );
+
+        if (orderRes.rows.length === 0) {
+            res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } });
+            return;
+        }
+
+        const order = orderRes.rows[0];
+        if (!order.tracking_number) {
+            res.json({
+                success: true,
+                data: { tracking: null, sourceCount: 0, insertedCount: 0, skipped: true, reason: 'NO_TRACKING_NUMBER' },
+            });
+            return;
+        }
+
+        const reconciled = await reconcileColiixHistoryForOrder(order);
+        res.json({
+            success: true,
+            data: {
+                tracking: order.tracking_number,
+                sourceCount: reconciled.sourceCount,
+                insertedCount: reconciled.inserted,
+                skipped: false,
+            },
+        });
+    } catch (error: any) {
+        logger.error('Reconcile courier history error:', error);
+        res.status(500).json({
+            success: false,
+            error: {
+                code: 'RECONCILE_FAILED',
+                message: error?.message || 'Failed to reconcile courier history',
+            },
+        });
     }
 });
 

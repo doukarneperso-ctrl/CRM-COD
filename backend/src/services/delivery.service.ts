@@ -166,18 +166,16 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
     const data = response.data;
 
     const strOrEmpty = (v: any) => (typeof v === 'string' ? v.trim() : '');
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const matchKey = (actual: string, expected: string) => norm(actual) === norm(expected);
     const pickFirstString = (obj: any, keys: string[]) => {
         if (!obj || typeof obj !== 'object') return '';
-        // direct key match (case-sensitive)
-        for (const k of keys) {
-            const val = obj[k];
-            if (typeof val === 'string' && val.trim() !== '') return val.trim();
-        }
-        // case-insensitive key match
         const entries = Object.entries(obj) as Array<[string, any]>;
-        for (const k of keys) {
-            const found = entries.find(([ek, ev]) => ek.toLowerCase() === k.toLowerCase() && typeof ev === 'string' && ev.trim() !== '');
-            if (found) return String(found[1]).trim();
+
+        // direct + case-insensitive + accent-insensitive key match
+        for (const [ek, ev] of entries) {
+            if (typeof ev !== 'string' || ev.trim() === '') continue;
+            if (keys.some((k) => matchKey(ek, k))) return ev.trim();
         }
         return '';
     };
@@ -187,13 +185,26 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
             'info', 'infos', 'information', 'informations',
         ]);
         if (explicit) return explicit;
-        // Last fallback: any string field whose key looks like comment/info.
-        if (m && typeof m === 'object') {
-            for (const [k, v] of Object.entries(m)) {
-                if (typeof v !== 'string' || !v.trim()) continue;
-                const lk = k.toLowerCase();
-                if (lk.includes('comment') || lk.includes('info') || lk.includes('note') || lk.includes('motif') || lk.includes('observ')) {
-                    return v.trim();
+
+        // Fallback: recursively inspect nested objects/arrays to find first useful comment/info string.
+        const queue: any[] = [m];
+        const seen = new Set<any>();
+        while (queue.length > 0) {
+            const cur = queue.shift();
+            if (!cur || typeof cur !== 'object' || seen.has(cur)) continue;
+            seen.add(cur);
+            if (Array.isArray(cur)) {
+                for (const item of cur) queue.push(item);
+                continue;
+            }
+            for (const [k, v] of Object.entries(cur)) {
+                if (typeof v === 'string' && v.trim()) {
+                    const nk = norm(k);
+                    if (nk.includes('comment') || nk.includes('info') || nk.includes('note') || nk.includes('motif') || nk.includes('observ')) {
+                        return v.trim();
+                    }
+                } else if (v && typeof v === 'object') {
+                    queue.push(v);
                 }
             }
         }
@@ -219,9 +230,29 @@ export async function trackOrder(trackingCode: string): Promise<ColiixTrackResul
                 normalizeHistoryArray(data?.history).length > 0 ? data?.history :
                     normalizeHistoryArray(data?.result);
 
-    const msgArray: any[] = normalizeHistoryArray(msgArrayRaw).filter(Boolean);
+    const flattenCandidates = (raw: any): any[] => {
+        const out: any[] = [];
+        const queue: any[] = normalizeHistoryArray(raw);
+        const seen = new Set<any>();
+        while (queue.length > 0) {
+            const cur = queue.shift();
+            if (!cur || typeof cur !== 'object' || seen.has(cur)) continue;
+            seen.add(cur);
+            if (Array.isArray(cur)) {
+                for (const item of cur) queue.push(item);
+                continue;
+            }
+            out.push(cur);
+            for (const v of Object.values(cur)) {
+                if (v && typeof v === 'object') queue.push(v);
+            }
+        }
+        return out;
+    };
+
+    const msgArray: any[] = flattenCandidates(msgArrayRaw).filter(Boolean);
     const normalized = msgArray.map((m: any) => ({
-        status: pickFirstString(m, ['status', 'statut', 'state', 'etat_colis']),
+        status: pickFirstString(m, ['status', 'statut', 'state', 'etat_colis', 'libelle', 'libellé']),
         time: pickFirstString(m, ['time', 'date', 'datetime', 'created_at', 'updated_at', 'datereported']),
         etat: pickFirstString(m, ['etat', 'payment', 'payment_status']),
         note: extractNote(m),
