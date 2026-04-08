@@ -276,17 +276,29 @@ export default function CallCentrePage() {
     };
 
     const openTrackingHistory = async (order: any) => {
-        if (!order?.tracking_number) {
-            message.warning('No tracking number for this order');
-            return;
-        }
         setTrackingHistoryOrder(order);
         setTrackingHistoryData(null);
         setTrackingHistoryOpen(true);
         setTrackingHistoryLoading(true);
         try {
-            const res = await api.get(`/delivery/track/${encodeURIComponent(order.tracking_number)}`);
-            setTrackingHistoryData(res.data?.data || null);
+            if (order?.tracking_number) {
+                const res = await api.get(`/delivery/track/${encodeURIComponent(order.tracking_number)}`);
+                setTrackingHistoryData(res.data?.data || null);
+            } else {
+                const res = await api.get(`/orders/${order.id}`);
+                const courierHistory = (res.data?.data?.statusHistory || [])
+                    .filter((h: any) => h.field === 'courier_status')
+                    .map((h: any) => ({
+                        status: h.new_value,
+                        time: h.created_at,
+                        etat: '',
+                        note: h.note || '',
+                    }));
+                setTrackingHistoryData({ history: courierHistory });
+                if (courierHistory.length === 0) {
+                    message.info('No courier timeline found for this order yet');
+                }
+            }
         } catch {
             setTrackingHistoryData(null);
             message.error('Failed to load shipping status history');
@@ -780,7 +792,25 @@ export default function CallCentrePage() {
             title: 'STATUS', key: 'status', width: 110,
             render: (_: any, r: any) => {
                 if (r.courier_status) {
-                    return <Tag color="#1890ff" style={{ borderRadius: 4, border: 'none', fontSize: 11 }}>🚚 {r.courier_status}</Tag>;
+                    return (
+                        <Space size={4}>
+                            <Tag color="#1890ff" style={{ borderRadius: 4, border: 'none', fontSize: 11, marginRight: 0 }}>
+                                🚚 {r.courier_status}
+                            </Tag>
+                            <Tooltip title="View shipping status history">
+                                <Button
+                                    type="text"
+                                    size="small"
+                                    icon={<HistoryOutlined />}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        openTrackingHistory(r);
+                                    }}
+                                    style={{ padding: 0, width: 18, height: 18, color: '#8B5A2B' }}
+                                />
+                            </Tooltip>
+                        </Space>
+                    );
                 }
 
                 const isReportedDueToday = r.confirmation_status === 'reported' && r.callback_scheduled_at &&
@@ -801,25 +831,6 @@ export default function CallCentrePage() {
                     </Tag>
                 );
             },
-        },
-        {
-            title: 'HIS', key: 'shipping_history', width: 52,
-            render: (_: any, r: any) => (
-                r.tracking_number ? (
-                    <Tooltip title="View shipping status history">
-                        <Button
-                            type="text"
-                            size="small"
-                            icon={<HistoryOutlined />}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                openTrackingHistory(r);
-                            }}
-                            style={{ padding: 0, width: 24, height: 24, color: '#8B5A2B' }}
-                        />
-                    </Tooltip>
-                ) : null
-            ),
         },
         {
             title: 'ACTIONS', key: 'actions', width: 100, align: 'center' as const,
