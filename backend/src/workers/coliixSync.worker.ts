@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { query } from '../config/database';
 import { trackOrder, detectCrmStatus } from '../services/delivery.service';
-import { createCommissionForOrder, voidPendingCommissionsForOrder } from '../services/commission.service';
+import { createCommissionForOrder, markCommissionDebtForReturnedOrder } from '../services/commission.service';
 import { createAuditLog } from '../services/audit.service';
 import { notifyManagers } from '../services/notification.service';
 import { emitDeliveryStatusUpdated } from '../services/socket.service';
@@ -72,11 +72,11 @@ export function startColiixSyncWorker(): void {
                 if (mapped === 'delivered' && order.assigned_to) {
                     try { await createCommissionForOrder(String(order.id), String(order.assigned_to)); } catch { /* non-blocking */ }
                 }
-                if (order.shipping_status === 'delivered' && mapped !== 'delivered') {
+                if (order.shipping_status === 'delivered' && mapped === 'returned') {
                     try {
-                        await voidPendingCommissionsForOrder(
+                        await markCommissionDebtForReturnedOrder(
                             String(order.id),
-                            `Auto-void: sync reconciliation ${order.shipping_status} -> ${mapped}`
+                            `Auto-debt: sync reconciliation ${order.shipping_status} -> ${mapped}`
                         );
                     } catch { /* non-blocking */ }
                 }
@@ -188,11 +188,11 @@ export function startColiixSyncWorker(): void {
                                 logger.error(`[COLIIX SYNC] Commission calc failed for ${order.order_number}:`, commErr);
                             }
                         }
-                        if (order.shipping_status === 'delivered' && crmStatus !== 'delivered') {
+                        if (order.shipping_status === 'delivered' && crmStatus === 'returned') {
                             try {
-                                await voidPendingCommissionsForOrder(
+                                await markCommissionDebtForReturnedOrder(
                                     String(order.id),
-                                    `Auto-void: Coliix sync corrected ${order.shipping_status} -> ${crmStatus}`
+                                    `Auto-debt: Coliix sync corrected ${order.shipping_status} -> ${crmStatus}`
                                 );
                             } catch (commErr) {
                                 logger.error(`[COLIIX SYNC] Commission void failed for ${order.order_number}:`, commErr);

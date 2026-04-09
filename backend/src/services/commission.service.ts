@@ -93,6 +93,21 @@ export async function calculateOrderCommission(
                 ruleLevel = 'agent_default';
                 break;
             }
+            if (!rule.agent_id && rule.product_id === item.product_id) {
+                matchedRule = rule;
+                ruleLevel = 'global_default';
+                break;
+            }
+            if (!rule.agent_id && rule.category_id && rule.category_id === item.category_id) {
+                matchedRule = rule;
+                ruleLevel = 'global_default';
+                break;
+            }
+            if (!rule.agent_id && !rule.product_id && !rule.category_id) {
+                matchedRule = rule;
+                ruleLevel = 'global_default';
+                break;
+            }
         }
 
         const type = matchedRule?.rule_type ?? globalDefaultType;
@@ -135,9 +150,29 @@ export async function createCommissionForOrder(
     orderId: string,
     agentId: string
 ): Promise<string | null> {
-    // Check if commission already exists for this order
+    // Business rule: commission is counted only when order is confirmed and currently delivered.
+    const orderResult = await pool.query(
+        `SELECT confirmation_status, shipping_status
+         FROM orders
+         WHERE id = $1 AND deleted_at IS NULL`,
+        [orderId]
+    );
+    if (orderResult.rows.length === 0) return null;
+    const order = orderResult.rows[0];
+    if (order.confirmation_status !== 'confirmed' || order.shipping_status !== 'delivered') {
+        console.log(`[COMMISSION] Skipped for order ${orderId}: requires confirmed + delivered`);
+        return null;
+    }
+
+    // Only block duplicates if there is an active (non-rejected) commission.
+    // If previous commission was rejected due to return, a new final delivered can create a new row.
     const existing = await pool.query(
-        `SELECT id FROM commissions WHERE order_id = $1 AND agent_id = $2`,
+        `SELECT id
+         FROM commissions
+         WHERE order_id = $1
+           AND agent_id = $2
+           AND status IN ('new', 'approved', 'paid')
+           AND deleted_at IS NULL`,
         [orderId, agentId]
     );
 
@@ -185,6 +220,33 @@ export async function voidPendingCommissionsForOrder(
              updated_at = NOW()
          WHERE order_id = $1
            AND status IN ('new', 'approved')
+           AND deleted_at IS NULL
+         RETURNING id`,
+        [orderId, reason]
+    );
+
+    return result.rows.length;
+}
+
+/**
+ * Mark commissions as debt when an order is returned after being delivered.
+ * This applies to pending and paid commissions (business rule for COD returns).
+ */
+export async function markCommissionDebtForReturnedOrder(
+    orderId: string,
+    reason = 'Auto-debt: returned after delivery'
+): Promise<number> {
+    const result = await pool.query(
+        `UPDATE commissions
+         SET status = 'rejected',
+             review_note = CASE
+               WHEN review_note IS NULL OR review_note = '' THEN $2
+               ELSE review_note || ' | ' || $2
+             END,
+             reviewed_at = NOW(),
+             updated_at = NOW()
+         WHERE order_id = $1
+           AND status IN ('new', 'approved', 'paid')
            AND deleted_at IS NULL
          RETURNING id`,
         [orderId, reason]

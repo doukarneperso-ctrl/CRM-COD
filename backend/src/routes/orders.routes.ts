@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { deductStock, restoreStock, checkStockAvailability } from '../services/stock.service';
 import { trackOrder } from '../services/delivery.service';
 import { isValidConfirmationTransition, isValidShippingTransition, handleUnreachable, getOrderItems } from '../services/order.service';
-import { createCommissionForOrder, voidPendingCommissionsForOrder } from '../services/commission.service';
+import { createCommissionForOrder, markCommissionDebtForReturnedOrder } from '../services/commission.service';
 import { manualAssign } from '../services/assignment.service';
 import { createNotification, notifyManagers } from '../services/notification.service';
 
@@ -879,10 +879,10 @@ router.put('/:id/shipping-status', requireAuth, requirePermission('update_order_
             }
         }
 
-        // If an order is corrected away from delivered, void pending commission rows.
-        if (oldStatus === 'delivered' && status !== 'delivered') {
+        // Business rule: debt only when delivered -> returned.
+        if (oldStatus === 'delivered' && status === 'returned') {
             try {
-                await voidPendingCommissionsForOrder(id, `Auto-void: shipping corrected ${oldStatus} -> ${status}`);
+                await markCommissionDebtForReturnedOrder(id, `Auto-debt: shipping corrected ${oldStatus} -> ${status}`);
             } catch (commErr) {
                 logger.error('Commission void failed (non-blocking):', commErr);
             }
@@ -1549,7 +1549,7 @@ router.get('/stats/agent-dashboard', requireAuth, async (req: Request, res: Resp
             `SELECT
                 COALESCE(SUM(amount) FILTER (WHERE status = 'paid'), 0) as paid,
                 COALESCE(SUM(amount) FILTER (WHERE status IN ('approved', 'new')), 0) as pending_comm,
-                COALESCE(SUM(amount) FILTER (WHERE status = 'rejected'), 0) as deducted,
+                COALESCE(SUM(amount) FILTER (WHERE status = 'rejected' AND review_note ILIKE 'Auto-debt:%'), 0) as deducted,
                 COALESCE(SUM(amount), 0) as total,
                 COUNT(*) FILTER (WHERE status IN ('approved', 'new')) as pending_count
              FROM commissions

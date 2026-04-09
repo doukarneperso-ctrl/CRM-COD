@@ -6,7 +6,7 @@ import { validateBody } from '../middleware/validate';
 import logger from '../utils/logger';
 import { z } from 'zod';
 import { exportOrder, trackOrder, detectCrmStatus } from '../services/delivery.service';
-import { createCommissionForOrder, voidPendingCommissionsForOrder } from '../services/commission.service';
+import { createCommissionForOrder, markCommissionDebtForReturnedOrder } from '../services/commission.service';
 import { createAuditLog } from '../services/audit.service';
 import { notifyManagers } from '../services/notification.service';
 
@@ -489,10 +489,10 @@ router.post('/sync-all', requireAuth, requirePermission('manage_settings'), asyn
 
                 const latestNote = `Coliix: ${result.state}${result.datereported ? ` @ ${result.datereported}` : ''}${result.note ? ` - ${result.note}` : ''}`;
                 await insertColiixHistoryIfMissing(String(order.id), order.courier_status || '', result.state, latestNote);
-                if (order.shipping_status === 'delivered' && crmStatus !== 'delivered') {
-                    await voidPendingCommissionsForOrder(
+                if (order.shipping_status === 'delivered' && crmStatus === 'returned') {
+                    await markCommissionDebtForReturnedOrder(
                         String(order.id),
-                        `Auto-void: sync-all corrected ${order.shipping_status} -> ${crmStatus}`
+                        `Auto-debt: sync-all corrected ${order.shipping_status} -> ${crmStatus}`
                     );
                 }
                 updated++;
@@ -604,11 +604,11 @@ export async function handleColiixWebhook(req: Request, res: Response): Promise<
                 logger.error('[COLIIX WEBHOOK] Commission calc failed:', commErr);
             }
         }
-        if (oldStatus === 'delivered' && crmStatus !== 'delivered') {
+        if (oldStatus === 'delivered' && crmStatus === 'returned') {
             try {
-                await voidPendingCommissionsForOrder(
+                await markCommissionDebtForReturnedOrder(
                     String(order.id),
-                    `Auto-void: webhook corrected ${oldStatus} -> ${crmStatus}`
+                    `Auto-debt: webhook corrected ${oldStatus} -> ${crmStatus}`
                 );
             } catch (commErr) {
                 logger.error('[COLIIX WEBHOOK] Commission void failed:', commErr);
