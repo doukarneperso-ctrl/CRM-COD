@@ -254,3 +254,47 @@ export async function markCommissionDebtForReturnedOrder(
 
     return result.rows.length;
 }
+
+/**
+ * Backfill commissions for already delivered+confirmed orders that missed commission creation.
+ * Safe to run repeatedly; it only targets orders without active commission rows.
+ */
+export async function backfillMissingCommissionsForAgent(
+    agentId: string,
+    limit = 500
+): Promise<{ scanned: number; created: number; skipped: number }> {
+    const missingResult = await pool.query(
+        `SELECT o.id
+         FROM orders o
+         WHERE o.assigned_to = $1
+           AND o.deleted_at IS NULL
+           AND o.confirmation_status = 'confirmed'
+           AND o.shipping_status = 'delivered'
+           AND NOT EXISTS (
+                SELECT 1
+                FROM commissions c
+                WHERE c.order_id = o.id
+                  AND c.agent_id = $1
+                  AND c.status IN ('new', 'approved', 'paid')
+                  AND c.deleted_at IS NULL
+           )
+         ORDER BY o.updated_at DESC
+         LIMIT $2`,
+        [agentId, limit]
+    );
+
+    let created = 0;
+    let skipped = 0;
+
+    for (const row of missingResult.rows) {
+        try {
+            const commissionId = await createCommissionForOrder(String(row.id), agentId);
+            if (commissionId) created++;
+            else skipped++;
+        } catch {
+            skipped++;
+        }
+    }
+
+    return { scanned: missingResult.rows.length, created, skipped };
+}

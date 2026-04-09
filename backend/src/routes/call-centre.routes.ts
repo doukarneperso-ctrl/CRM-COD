@@ -3,6 +3,7 @@ import { query } from '../config/database';
 import { requireAuth } from '../middleware/auth';
 import { parsePagination, paginationMeta, paginationSQL } from '../utils/pagination';
 import { trackOrder } from '../services/delivery.service';
+import { backfillMissingCommissionsForAgent } from '../services/commission.service';
 import logger from '../utils/logger';
 
 const router = Router();
@@ -69,6 +70,12 @@ router.get('/commissions', requireAuth, async (req: Request, res: Response) => {
     try {
         setNoCacheHeaders(res);
         const userId = req.session.userId!;
+        // Self-heal historical gaps before computing commission cards.
+        try {
+            await backfillMissingCommissionsForAgent(String(userId));
+        } catch (err) {
+            logger.warn('Call centre commissions backfill warning:', err);
+        }
 
         const result = await query(
             `SELECT

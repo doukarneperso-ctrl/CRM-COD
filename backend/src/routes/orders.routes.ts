@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { deductStock, restoreStock, checkStockAvailability } from '../services/stock.service';
 import { trackOrder } from '../services/delivery.service';
 import { isValidConfirmationTransition, isValidShippingTransition, handleUnreachable, getOrderItems } from '../services/order.service';
-import { createCommissionForOrder, markCommissionDebtForReturnedOrder } from '../services/commission.service';
+import { createCommissionForOrder, markCommissionDebtForReturnedOrder, backfillMissingCommissionsForAgent } from '../services/commission.service';
 import { manualAssign } from '../services/assignment.service';
 import { createNotification, notifyManagers } from '../services/notification.service';
 
@@ -1484,6 +1484,12 @@ router.get('/out-of-stock-queue', requireAuth, async (_req: Request, res: Respon
 router.get('/stats/agent-dashboard', requireAuth, async (req: Request, res: Response) => {
     try {
         const agentId = req.session.userId;
+        // Keep historical delivered commissions aligned for dashboard cards.
+        try {
+            await backfillMissingCommissionsForAgent(String(agentId));
+        } catch (err) {
+            logger.warn('Agent dashboard commission backfill warning:', err);
+        }
 
         // Helper to get stats for a date range
         const getStats = async (fromDate: string, toDate: string) => {
