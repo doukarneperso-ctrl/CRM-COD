@@ -4,6 +4,19 @@ import { requireAuth } from '../middleware/auth';
 import logger from '../utils/logger';
 
 const router = Router();
+const deliveredCountCondition = `o.confirmation_status = 'confirmed' AND o.shipping_status = 'delivered'`;
+
+const setNoCacheHeaders = (res: Response) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.set('Surrogate-Control', 'no-store');
+};
+
+router.use((_req: Request, res: Response, next) => {
+    setNoCacheHeaders(res);
+    next();
+});
 
 // Shared filter builder
 function buildDateFilters(req: Request) {
@@ -43,11 +56,11 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
                 `SELECT
                     COUNT(*) as total_orders,
                     COUNT(*) FILTER (WHERE confirmation_status = 'confirmed') as confirmed_orders,
-                    COUNT(*) FILTER (WHERE shipping_status = 'delivered') as delivered_orders,
+                    COUNT(*) FILTER (WHERE ${deliveredCountCondition}) as delivered_orders,
                     COUNT(*) FILTER (WHERE shipping_status = 'returned') as returned_orders,
-                    COALESCE(SUM(final_amount) FILTER (WHERE shipping_status = 'delivered'), 0) as total_revenue,
+                    COALESCE(SUM(final_amount) FILTER (WHERE ${deliveredCountCondition}), 0) as total_revenue,
                     0 as total_cost_delivered,
-                    COALESCE(SUM(final_amount) FILTER (WHERE shipping_status = 'delivered'), 0) as gross_profit
+                    COALESCE(SUM(final_amount) FILTER (WHERE ${deliveredCountCondition}), 0) as gross_profit
                  FROM orders o WHERE ${where}`,
                 params
             ),
@@ -104,11 +117,11 @@ router.get('/charts', requireAuth, async (req: Request, res: Response) => {
             `SELECT
                 DATE_TRUNC('${trunc}', o.created_at) as period,
                 COUNT(*) as orders,
-                COUNT(*) FILTER (WHERE o.shipping_status = 'delivered') as delivered,
+                COUNT(*) FILTER (WHERE ${deliveredCountCondition}) as delivered,
                 COUNT(*) FILTER (WHERE o.shipping_status = 'returned') as returned,
-                COALESCE(SUM(o.final_amount) FILTER (WHERE o.shipping_status = 'delivered'), 0) as revenue,
+                COALESCE(SUM(o.final_amount) FILTER (WHERE ${deliveredCountCondition}), 0) as revenue,
                 0 as cost,
-                COALESCE(SUM(o.final_amount) FILTER (WHERE o.shipping_status = 'delivered'), 0) as profit
+                COALESCE(SUM(o.final_amount) FILTER (WHERE ${deliveredCountCondition}), 0) as profit
              FROM orders o WHERE ${where}
              GROUP BY period ORDER BY period ASC`,
             params
@@ -131,9 +144,9 @@ router.get('/cities', requireAuth, async (req: Request, res: Response) => {
             `SELECT
                 COALESCE(o.city, 'Unknown') as city,
                 COUNT(*) as total_orders,
-                COUNT(*) FILTER (WHERE o.shipping_status = 'delivered') as delivered,
+                COUNT(*) FILTER (WHERE ${deliveredCountCondition}) as delivered,
                 COUNT(*) FILTER (WHERE o.shipping_status = 'returned') as returned,
-                COALESCE(SUM(o.final_amount) FILTER (WHERE o.shipping_status = 'delivered'), 0) as revenue
+                COALESCE(SUM(o.final_amount) FILTER (WHERE ${deliveredCountCondition}), 0) as revenue
              FROM orders o WHERE ${where}
              GROUP BY o.city ORDER BY total_orders DESC
              LIMIT 20`,
@@ -159,8 +172,8 @@ router.get('/products', requireAuth, async (req: Request, res: Response) => {
                 COALESCE(p.category, 'Uncategorized') AS category,
                 COUNT(oi.id) as order_count,
                 SUM(oi.quantity) as units_sold,
-                COALESCE(SUM(oi.unit_price * oi.quantity) FILTER (WHERE o.shipping_status = 'delivered'), 0) as revenue,
-                COALESCE(SUM((oi.unit_price - oi.unit_cost) * oi.quantity) FILTER (WHERE o.shipping_status = 'delivered'), 0) as profit,
+                COALESCE(SUM(oi.unit_price * oi.quantity) FILTER (WHERE ${deliveredCountCondition}), 0) as revenue,
+                COALESCE(SUM((oi.unit_price - oi.unit_cost) * oi.quantity) FILTER (WHERE ${deliveredCountCondition}), 0) as profit,
                 COUNT(*) FILTER (WHERE o.shipping_status = 'returned') as returned
              FROM orders o
              JOIN order_items oi ON oi.order_id = o.id
@@ -190,9 +203,9 @@ router.get('/agents', requireAuth, async (req: Request, res: Response) => {
                 u.id, u.full_name AS agent,
                 COUNT(o.id) as total_orders,
                 COUNT(o.id) FILTER (WHERE o.confirmation_status = 'confirmed') as confirmed,
-                COUNT(o.id) FILTER (WHERE o.shipping_status = 'delivered') as delivered,
+                COUNT(o.id) FILTER (WHERE ${deliveredCountCondition}) as delivered,
                 COUNT(o.id) FILTER (WHERE o.shipping_status = 'returned') as returned,
-                COALESCE(SUM(o.final_amount) FILTER (WHERE o.shipping_status = 'delivered'), 0) as revenue,
+                COALESCE(SUM(o.final_amount) FILTER (WHERE ${deliveredCountCondition}), 0) as revenue,
                 ROUND(COUNT(o.id) FILTER (WHERE o.confirmation_status = 'confirmed')::numeric /
                       NULLIF(COUNT(o.id), 0) * 100, 1) as confirmation_rate,
                 COALESCE(SUM(c.amount) FILTER (WHERE c.status = 'paid'), 0) as commissions_earned
@@ -220,7 +233,7 @@ router.get('/profitability', requireAuth, async (req: Request, res: Response) =>
         const [ordersResult, expensesResult, commissionsResult] = await Promise.all([
             query(
                 `SELECT
-                    COALESCE(SUM(final_amount) FILTER (WHERE shipping_status = 'delivered'), 0) as gross_revenue,
+                    COALESCE(SUM(final_amount) FILTER (WHERE ${deliveredCountCondition}), 0) as gross_revenue,
                     0 as cogs,
                     0 as shipping_costs,
                     COALESCE(SUM(COALESCE(discount, 0)), 0) as total_discounts

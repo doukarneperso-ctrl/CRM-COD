@@ -6,11 +6,20 @@ import { trackOrder } from '../services/delivery.service';
 import logger from '../utils/logger';
 
 const router = Router();
+const deliveredCountCondition = `o.confirmation_status = 'confirmed' AND o.shipping_status = 'delivered'`;
+
+const setNoCacheHeaders = (res: Response) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.set('Surrogate-Control', 'no-store');
+};
 
 // ─── GET /api/call-centre/stats ───────────────────
 // Agent KPI cards: Total Assigned, Pending, Confirmed, Delivered, Returned
 router.get('/stats', requireAuth, async (req: Request, res: Response) => {
     try {
+        setNoCacheHeaders(res);
         const userId = req.session.userId!;
         const { from, to } = req.query as { from?: string; to?: string };
         const dateFrom = from || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
@@ -23,7 +32,7 @@ router.get('/stats', requireAuth, async (req: Request, res: Response) => {
                     COUNT(*) FILTER (WHERE o.confirmation_status = 'pending') as pending_calls,
                     COUNT(*) FILTER (WHERE o.confirmation_status = 'confirmed') as confirmed,
                     COUNT(*) FILTER (WHERE o.confirmation_status = 'fake') as fake,
-                    COUNT(*) FILTER (WHERE o.shipping_status = 'delivered') as delivered,
+                    COUNT(*) FILTER (WHERE ${deliveredCountCondition}) as delivered,
                     COUNT(*) FILTER (WHERE o.shipping_status = 'returned') as returned,
                     COUNT(*) FILTER (WHERE o.shipping_status = 'in_transit') as in_transit
                 FROM orders o
@@ -58,6 +67,7 @@ router.get('/stats', requireAuth, async (req: Request, res: Response) => {
 // Agent commission summary cards: Paid, Owed (Pending), Deducted
 router.get('/commissions', requireAuth, async (req: Request, res: Response) => {
     try {
+        setNoCacheHeaders(res);
         const userId = req.session.userId!;
 
         const result = await query(

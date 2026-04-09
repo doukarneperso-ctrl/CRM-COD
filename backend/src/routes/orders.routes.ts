@@ -18,6 +18,15 @@ import { createNotification, notifyManagers } from '../services/notification.ser
 
 const router = Router();
 
+const deliveredCountCondition = `confirmation_status = 'confirmed' AND shipping_status = 'delivered'`;
+
+const setNoCacheHeaders = (res: Response) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.set('Surrogate-Control', 'no-store');
+};
+
 // ─── Schemas ──────────────────────────────────────
 const createOrderSchema = z.object({
     customerName: z.string().min(1),
@@ -81,6 +90,11 @@ async function nextOrderNumber(): Promise<string> {
     const prefix = String(prefixResult.rows[0]?.value || 'ORD').replace(/"/g, '');
     return `${prefix}-${counter}`;
 }
+
+router.use('/stats', (_req: Request, res: Response, next) => {
+    setNoCacheHeaders(res);
+    next();
+});
 
 // ─── GET /api/orders ──────────────────────────────
 router.get('/', requireAuth, requirePermission('view_orders'), async (req: Request, res: Response) => {
@@ -982,9 +996,9 @@ router.get('/stats/summary', requireAuth, async (req: Request, res: Response) =>
         COUNT(*) FILTER (WHERE confirmation_status = 'pending' AND deleted_at IS NULL ${agentFilter}) as pending,
         COUNT(*) FILTER (WHERE confirmation_status = 'confirmed' AND deleted_at IS NULL ${agentFilter}) as confirmed,
         COUNT(*) FILTER (WHERE shipping_status = 'in_transit' AND deleted_at IS NULL ${agentFilter}) as in_transit,
-        COUNT(*) FILTER (WHERE shipping_status = 'delivered' AND deleted_at IS NULL ${agentFilter}) as delivered,
+        COUNT(*) FILTER (WHERE ${deliveredCountCondition} AND deleted_at IS NULL ${agentFilter}) as delivered,
         COUNT(*) FILTER (WHERE shipping_status = 'returned' AND deleted_at IS NULL ${agentFilter}) as returned,
-        COALESCE(SUM(final_amount) FILTER (WHERE shipping_status = 'delivered' AND deleted_at IS NULL ${agentFilter}), 0) as total_revenue,
+        COALESCE(SUM(final_amount) FILTER (WHERE ${deliveredCountCondition} AND deleted_at IS NULL ${agentFilter}), 0) as total_revenue,
         COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE AND deleted_at IS NULL ${agentFilter}) as today_orders
       FROM orders
     `, params);
@@ -1031,9 +1045,9 @@ router.get('/stats/dashboard', requireAuth, async (req: Request, res: Response) 
                     COUNT(DISTINCT orders.id) FILTER (WHERE orders.confirmation_status = 'confirmed' AND orders.deleted_at IS NULL) as confirmed,
                     COUNT(DISTINCT orders.id) FILTER (WHERE orders.confirmation_status = 'cancelled' AND orders.deleted_at IS NULL) as cancelled,
                     COUNT(DISTINCT orders.id) FILTER (WHERE orders.shipping_status = 'in_transit' AND orders.deleted_at IS NULL) as in_transit,
-                    COUNT(DISTINCT orders.id) FILTER (WHERE orders.shipping_status = 'delivered' AND orders.deleted_at IS NULL) as delivered,
+                    COUNT(DISTINCT orders.id) FILTER (WHERE ${deliveredCountCondition} AND orders.deleted_at IS NULL) as delivered,
                     COUNT(DISTINCT orders.id) FILTER (WHERE orders.shipping_status = 'returned' AND orders.deleted_at IS NULL) as returned,
-                    COALESCE(SUM(DISTINCT orders.final_amount) FILTER (WHERE orders.confirmation_status = 'confirmed' AND orders.deleted_at IS NULL), 0) as total_revenue,
+                    COALESCE(SUM(DISTINCT orders.final_amount) FILTER (WHERE ${deliveredCountCondition} AND orders.deleted_at IS NULL), 0) as total_revenue,
                     COUNT(DISTINCT orders.id) FILTER (WHERE orders.created_at >= CURRENT_DATE AND orders.deleted_at IS NULL) as today_orders
                 FROM orders ${joinStr}
                 WHERE orders.created_at >= ${dateFrom} AND orders.created_at < ${dateTo} ${whereStr}
@@ -1042,9 +1056,9 @@ router.get('/stats/dashboard', requireAuth, async (req: Request, res: Response) 
                 SELECT 
                     COUNT(DISTINCT orders.id) FILTER (WHERE orders.deleted_at IS NULL) as total_orders,
                     COUNT(DISTINCT orders.id) FILTER (WHERE orders.confirmation_status = 'confirmed' AND orders.deleted_at IS NULL) as confirmed,
-                    COUNT(DISTINCT orders.id) FILTER (WHERE orders.shipping_status = 'delivered' AND orders.deleted_at IS NULL) as delivered,
+                    COUNT(DISTINCT orders.id) FILTER (WHERE ${deliveredCountCondition} AND orders.deleted_at IS NULL) as delivered,
                     COUNT(DISTINCT orders.id) FILTER (WHERE orders.shipping_status = 'returned' AND orders.deleted_at IS NULL) as returned,
-                    COALESCE(SUM(DISTINCT orders.final_amount) FILTER (WHERE orders.confirmation_status = 'confirmed' AND orders.deleted_at IS NULL), 0) as total_revenue
+                    COALESCE(SUM(DISTINCT orders.final_amount) FILTER (WHERE ${deliveredCountCondition} AND orders.deleted_at IS NULL), 0) as total_revenue
                 FROM orders ${joinStr}
                 WHERE orders.created_at >= ${prevFrom} AND orders.created_at < ${prevTo} ${whereStr}
             ),
@@ -1131,8 +1145,8 @@ router.get('/stats/top-agents', requireAuth, async (req: Request, res: Response)
                 u.id, u.full_name as name,
                 COUNT(DISTINCT o.id) as total_orders,
                 COUNT(DISTINCT o.id) FILTER (WHERE o.confirmation_status = 'confirmed') as confirmed,
-                COUNT(DISTINCT o.id) FILTER (WHERE o.shipping_status = 'delivered') as delivered,
-                COALESCE(SUM(DISTINCT o.final_amount) FILTER (WHERE o.confirmation_status = 'confirmed'), 0) as revenue
+                COUNT(DISTINCT o.id) FILTER (WHERE ${deliveredCountCondition}) as delivered,
+                COALESCE(SUM(DISTINCT o.final_amount) FILTER (WHERE ${deliveredCountCondition}), 0) as revenue
             FROM orders o
             JOIN users u ON o.assigned_to = u.id
             ${joins.join(' ')}
@@ -1167,10 +1181,10 @@ router.get('/stats/top-cities', requireAuth, async (req: Request, res: Response)
             SELECT 
                 c.city,
                 COUNT(DISTINCT o.id) as total_orders,
-                COUNT(DISTINCT o.id) FILTER (WHERE o.shipping_status = 'delivered') as delivered,
+                COUNT(DISTINCT o.id) FILTER (WHERE ${deliveredCountCondition}) as delivered,
                 COUNT(DISTINCT o.id) FILTER (WHERE o.shipping_status = 'returned') as returned,
                 ROUND(
-                    COUNT(DISTINCT o.id) FILTER (WHERE o.shipping_status = 'delivered')::numeric / 
+                    COUNT(DISTINCT o.id) FILTER (WHERE ${deliveredCountCondition})::numeric / 
                     NULLIF(COUNT(DISTINCT o.id), 0) * 100, 1
                 ) as delivery_rate
             FROM orders o
@@ -1202,7 +1216,7 @@ router.get('/stats/top-products', requireAuth, async (req: Request, res: Respons
             SELECT 
                 p.id, p.name, p.image_url,
                 COUNT(DISTINCT o.id) as total_orders,
-                COUNT(DISTINCT o.id) FILTER (WHERE o.shipping_status = 'delivered') as delivered_orders,
+                COUNT(DISTINCT o.id) FILTER (WHERE ${deliveredCountCondition}) as delivered_orders,
                 SUM(oi.quantity) as total_qty,
                 COALESCE(SUM(oi.quantity * oi.unit_price), 0) as revenue
             FROM order_items oi
@@ -1483,11 +1497,11 @@ router.get('/stats/agent-dashboard', requireAuth, async (req: Request, res: Resp
                     COUNT(*) FILTER (WHERE confirmation_status = 'fake') as fake,
                     COUNT(*) FILTER (WHERE confirmation_status = 'reported') as reported,
                     COUNT(*) FILTER (WHERE confirmation_status = 'out_of_stock') as out_of_stock,
-                    COUNT(*) FILTER (WHERE shipping_status = 'delivered') as delivered,
+                    COUNT(*) FILTER (WHERE ${deliveredCountCondition}) as delivered,
                     COUNT(*) FILTER (WHERE shipping_status = 'returned') as returned,
                     COUNT(*) FILTER (WHERE shipping_status = 'in_transit') as in_transit,
                     COALESCE(SUM(CASE WHEN confirmation_status = 'confirmed' THEN final_amount ELSE 0 END), 0) as confirmed_revenue,
-                    COALESCE(SUM(CASE WHEN shipping_status = 'delivered' THEN final_amount ELSE 0 END), 0) as delivered_revenue
+                    COALESCE(SUM(CASE WHEN ${deliveredCountCondition} THEN final_amount ELSE 0 END), 0) as delivered_revenue
                  FROM orders
                  WHERE assigned_to = $1
                    AND updated_at >= $2::date
@@ -1524,11 +1538,11 @@ router.get('/stats/agent-dashboard', requireAuth, async (req: Request, res: Resp
                     COUNT(*) FILTER (WHERE confirmation_status = 'cancelled') as cancelled,
                     COUNT(*) FILTER (WHERE confirmation_status = 'unreachable') as unreachable,
                     COUNT(*) FILTER (WHERE confirmation_status = 'fake') as fake,
-                    COUNT(*) FILTER (WHERE shipping_status = 'delivered') as delivered,
+                    COUNT(*) FILTER (WHERE ${deliveredCountCondition}) as delivered,
                     COUNT(*) FILTER (WHERE shipping_status = 'returned') as returned,
                     COUNT(*) FILTER (WHERE shipping_status = 'in_transit') as in_transit,
                     COALESCE(SUM(CASE WHEN confirmation_status = 'confirmed' THEN final_amount ELSE 0 END), 0) as confirmed_revenue,
-                    COALESCE(SUM(CASE WHEN shipping_status = 'delivered' THEN final_amount ELSE 0 END), 0) as delivered_revenue
+                    COALESCE(SUM(CASE WHEN ${deliveredCountCondition} THEN final_amount ELSE 0 END), 0) as delivered_revenue
                  FROM orders
                  WHERE assigned_to = $1 AND deleted_at IS NULL`,
                 [agentId]
