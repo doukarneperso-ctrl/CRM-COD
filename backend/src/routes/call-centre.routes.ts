@@ -16,6 +16,9 @@ const setNoCacheHeaders = (res: Response) => {
     res.set('Surrogate-Control', 'no-store');
 };
 
+const casablancaDate = (date = new Date()) =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(date);
+
 // ─── GET /api/call-centre/stats ───────────────────
 // Agent KPI cards: Total Assigned, Pending, Confirmed, Delivered, Returned
 router.get('/stats', requireAuth, async (req: Request, res: Response) => {
@@ -23,8 +26,9 @@ router.get('/stats', requireAuth, async (req: Request, res: Response) => {
         setNoCacheHeaders(res);
         const userId = req.session.userId!;
         const { from, to } = req.query as { from?: string; to?: string };
-        const dateFrom = from || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
-        const dateTo = to || new Date().toISOString().split('T')[0];
+        const todayLocal = casablancaDate();
+        const dateFrom = from || `${todayLocal.slice(0, 4)}-01-01`;
+        const dateTo = to || todayLocal;
 
         const [statsResult, courierCountsResult] = await Promise.all([
             query(
@@ -39,8 +43,8 @@ router.get('/stats', requireAuth, async (req: Request, res: Response) => {
                 FROM orders o
                 WHERE o.assigned_to = $1
                   AND o.deleted_at IS NULL
-                  AND o.created_at >= $2
-                  AND o.created_at <= $3::date + interval '1 day'`,
+                  AND o.created_at >= $2::date
+                  AND o.created_at < ($3::date + interval '1 day')`,
                 [userId, dateFrom, dateTo]
             ),
             query(
@@ -48,8 +52,8 @@ router.get('/stats', requireAuth, async (req: Request, res: Response) => {
                  FROM orders o
                  WHERE o.assigned_to = $1
                    AND o.deleted_at IS NULL
-                   AND o.created_at >= $2
-                   AND o.created_at <= $3::date + interval '1 day'
+                   AND o.created_at >= $2::date
+                   AND o.created_at < ($3::date + interval '1 day')
                    AND o.courier_status IS NOT NULL
                    AND o.courier_status != ''
                  GROUP BY courier_status`,
@@ -70,6 +74,7 @@ router.get('/commissions', requireAuth, async (req: Request, res: Response) => {
     try {
         setNoCacheHeaders(res);
         const userId = req.session.userId!;
+        const { from, to } = req.query as { from?: string; to?: string };
         // Self-heal historical gaps before computing commission cards.
         try {
             await backfillMissingCommissionsForAgent(String(userId));
@@ -77,14 +82,30 @@ router.get('/commissions', requireAuth, async (req: Request, res: Response) => {
             logger.warn('Call centre commissions backfill warning:', err);
         }
 
+        const dateParams: any[] = [userId];
+        let dateWhere = '';
+        if (from) {
+            dateWhere += ` AND o.created_at >= $2::date`;
+            dateParams.push(from);
+        }
+        if (to) {
+            dateWhere += from
+                ? ` AND o.created_at < ($3::date + interval '1 day')`
+                : ` AND o.created_at < ($2::date + interval '1 day')`;
+            dateParams.push(to);
+        }
+
         const result = await query(
             `SELECT
                 COALESCE(SUM(amount) FILTER (WHERE status = 'paid'), 0) as commission_paid,
                 COALESCE(SUM(amount) FILTER (WHERE status IN ('new', 'approved')), 0) as commission_owed,
                 COALESCE(SUM(amount) FILTER (WHERE status = 'rejected' AND review_note ILIKE 'Auto-debt:%'), 0) as pending_deductions
-            FROM commissions
-            WHERE agent_id = $1`,
-            [userId]
+            FROM commissions c
+            LEFT JOIN orders o ON o.id = c.order_id
+            WHERE c.agent_id = $1
+              AND c.deleted_at IS NULL
+              ${dateWhere}`,
+            dateParams
         );
 
         res.json({ success: true, data: result.rows[0] });
@@ -305,7 +326,7 @@ router.get('/queue', requireAuth, async (req: Request, res: Response) => {
             idx++;
         }
         if (to) {
-            whereExtra += ` AND o.created_at <= $${idx}::date + interval '1 day'`;
+            whereExtra += ` AND o.created_at < ($${idx}::date + interval '1 day')`;
             params.push(to);
             idx++;
         }
@@ -358,7 +379,7 @@ router.get('/queue', requireAuth, async (req: Request, res: Response) => {
                 FROM orders
                 WHERE assigned_to = $1 AND deleted_at IS NULL
                   ${from ? `AND created_at >= '${from}'` : ''}
-                  ${to ? `AND created_at <= '${to}'::date + interval '1 day'` : ''}`,
+                  ${to ? `AND created_at < ('${to}'::date + interval '1 day')` : ''}`,
                 [userId]
             ),
             // Dynamic Coliix status counts (respects date range)
@@ -369,7 +390,7 @@ router.get('/queue', requireAuth, async (req: Request, res: Response) => {
                    AND courier_status IS NOT NULL
                    AND courier_status != ''
                    ${from ? `AND created_at >= '${from}'` : ''}
-                   ${to ? `AND created_at <= '${to}'::date + interval '1 day'` : ''}
+                   ${to ? `AND created_at < ('${to}'::date + interval '1 day')` : ''}
                  GROUP BY courier_status`,
                 [userId]
             )

@@ -18,9 +18,16 @@ import {
 import api from '../api/client';
 import { useRealtimeRefresh } from '../hooks/useSocket';
 import { useAuthStore } from '../stores/authStore';
+import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
+const DATE_PRESETS = [
+    { label: 'Today', value: [dayjs(), dayjs()] },
+    { label: 'Yesterday', value: [dayjs().subtract(1, 'day'), dayjs().subtract(1, 'day')] },
+    { label: 'Last 7 Days', value: [dayjs().subtract(6, 'day'), dayjs()] },
+    { label: 'This Month', value: [dayjs().startOf('month'), dayjs()] },
+];
 
 const confirmationColors: Record<string, string> = {
     pending: 'gold', confirmed: 'green', cancelled: 'red', unreachable: 'default',
@@ -229,7 +236,13 @@ export default function OrdersPage() {
     };
 
     const fetchStats = async () => {
-        try { const res = await api.get('/orders/stats/summary'); setStats(res.data.data); } catch { }
+        try {
+            const params: any = {};
+            if (filters.dateFrom) params.dateFrom = filters.dateFrom;
+            if (filters.dateTo) params.dateTo = filters.dateTo;
+            const res = await api.get('/orders/stats/summary', { params });
+            setStats(res.data.data);
+        } catch { }
     };
     const fetchProducts = async () => {
         try { const res = await api.get('/products', { params: { pageSize: 200 } }); setProducts(res.data.data); } catch { }
@@ -239,7 +252,7 @@ export default function OrdersPage() {
     };
 
     useEffect(() => { fetchOrders(); fetchStats(); fetchProducts(); fetchAgents(); fetchOosQueue(); }, []);
-    useEffect(() => { fetchOrders(); }, [filters]);
+    useEffect(() => { fetchOrders(); fetchStats(); }, [filters]);
 
     // Real-time auto-refresh via Socket.IO
     useRealtimeRefresh(() => { fetchOrders(); fetchStats(); });
@@ -1125,7 +1138,8 @@ export default function OrdersPage() {
                             onChange={(e) => setFilters(f => ({ ...f, city: e.target.value }))} />
                     </Col>
                     <Col xs={24} sm={24} md={4}>
-                        <RangePicker size="small" style={{ width: '100%' }}
+                        <RangePicker size="small" style={{ width: '100%' }} presets={DATE_PRESETS}
+                            value={filters.dateFrom && filters.dateTo ? [dayjs(filters.dateFrom), dayjs(filters.dateTo)] : null}
                             onChange={(dates) => {
                                 setFilters(f => ({
                                     ...f,

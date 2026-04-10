@@ -31,8 +31,8 @@ function buildDateFilters(req: Request) {
     const params: any[] = [];
     let idx = 1;
 
-    if (from) { conditions.push(`o.created_at >= $${idx++}`); params.push(from); }
-    if (to) { conditions.push(`o.created_at <= $${idx++}`); params.push(to); }
+    if (from) { conditions.push(`o.created_at >= $${idx++}::date`); params.push(from); }
+    if (to) { conditions.push(`o.created_at < ($${idx++}::date + interval '1 day')`); params.push(to); }
     if (agentId) { conditions.push(`o.assigned_to = $${idx++}`); params.push(agentId); }
     if (storeId) { conditions.push(`o.store_id = $${idx++}`); params.push(storeId); }
     if (city) { conditions.push(`LOWER(o.city) = LOWER($${idx++})`); params.push(city); }

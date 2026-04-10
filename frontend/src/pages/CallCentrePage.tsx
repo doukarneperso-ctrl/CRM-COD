@@ -22,6 +22,12 @@ dayjs.extend(relativeTime);
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
+const DATE_PRESETS = [
+    { label: 'Today', value: [dayjs(), dayjs()] },
+    { label: 'Yesterday', value: [dayjs().subtract(1, 'day'), dayjs().subtract(1, 'day')] },
+    { label: 'Last 7 Days', value: [dayjs().subtract(6, 'day'), dayjs()] },
+    { label: 'This Month', value: [dayjs().startOf('month'), dayjs()] },
+];
 
 const confirmationColors: Record<string, string> = {
     pending: 'gold', confirmed: 'green', cancelled: 'red',
@@ -244,14 +250,20 @@ export default function CallCentrePage() {
 
     const fetchStats = async () => {
         try {
-            const res = await api.get('/call-centre/stats');
+            const params: any = {};
+            if (dateRange[0]) params.from = dateRange[0];
+            if (dateRange[1]) params.to = dateRange[1];
+            const res = await api.get('/call-centre/stats', { params });
             setStats(res.data.data || {});
         } catch { }
     };
 
     const fetchCommissions = async () => {
         try {
-            const res = await api.get('/call-centre/commissions');
+            const params: any = {};
+            if (dateRange[0]) params.from = dateRange[0];
+            if (dateRange[1]) params.to = dateRange[1];
+            const res = await api.get('/call-centre/commissions', { params });
             setCommissions(res.data.data || {});
         } catch { }
     };
@@ -295,11 +307,11 @@ export default function CallCentrePage() {
         }
     };
 
-    useEffect(() => { fetchStats(); fetchCommissions(); fetchProducts(); fetchCouriers(); }, []);
-    useEffect(() => { fetchQueue(); }, [activeTab, search, dateRange]);
+    useEffect(() => { fetchProducts(); fetchCouriers(); }, []);
+    useEffect(() => { fetchQueue(); fetchStats(); fetchCommissions(); }, [activeTab, search, dateRange]);
 
     // Real-time auto-refresh via Socket.IO
-    useRealtimeRefresh(() => { fetchQueue(); fetchStats(); });
+    useRealtimeRefresh(() => { fetchQueue(); fetchStats(); fetchCommissions(); });
 
     // Product dropdown helpers
     const productOptions = products.map((p: any) => ({ value: p.id, label: p.name }));
@@ -987,7 +999,8 @@ export default function CallCentrePage() {
                                 onSearch={(v) => setSearch(v)} />
                         </Col>
                         <Col xs={24} sm={14} md={10}>
-                            <RangePicker size="small" style={{ width: '100%' }}
+                            <RangePicker size="small" style={{ width: '100%' }} presets={DATE_PRESETS}
+                                value={dateRange[0] && dateRange[1] ? [dayjs(dateRange[0]), dayjs(dateRange[1])] : null}
                                 onChange={(dates) => setDateRange([
                                     dates?.[0]?.format('YYYY-MM-DD') || '',
                                     dates?.[1]?.format('YYYY-MM-DD') || '',

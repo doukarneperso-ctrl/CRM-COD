@@ -11,9 +11,16 @@ import {
     AreaChart, Area, Legend,
 } from 'recharts';
 import api from '../api/client';
+import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
+const DATE_PRESETS = [
+    { label: 'Today', value: [dayjs(), dayjs()] },
+    { label: 'Yesterday', value: [dayjs().subtract(1, 'day'), dayjs().subtract(1, 'day')] },
+    { label: 'Last 7 Days', value: [dayjs().subtract(6, 'day'), dayjs()] },
+    { label: 'This Month', value: [dayjs().startOf('month'), dayjs()] },
+];
 
 const formatAmount = (v: any) => parseFloat(String(v || 0)).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' MAD';
 const pct = (v: any) => `${parseFloat(String(v || 0)).toFixed(1)}%`;
@@ -58,7 +65,7 @@ export default function AnalyticsPage() {
         setLoading(false);
     };
 
-    useEffect(() => { fetchAll(); }, []);
+    useEffect(() => { fetchAll(); }, [dateRange]);
 
     const kpis = dashboard?.kpis || {};
     const prof = profitability || {};
@@ -251,6 +258,8 @@ export default function AnalyticsPage() {
                 <Space>
                     <RangePicker
                         size="small"
+                        presets={DATE_PRESETS}
+                        value={dateRange ? [dayjs(dateRange[0]), dayjs(dateRange[1])] : null}
                         onChange={dates => {
                             if (dates?.[0] && dates?.[1]) {
                                 setDateRange([dates[0].format('YYYY-MM-DD'), dates[1].format('YYYY-MM-DD')]);

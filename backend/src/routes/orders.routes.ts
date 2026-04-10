@@ -27,6 +27,9 @@ const setNoCacheHeaders = (res: Response) => {
     res.set('Surrogate-Control', 'no-store');
 };
 
+const casablancaDate = (date = new Date()) =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(date);
+
 // ─── Schemas ──────────────────────────────────────
 const createOrderSchema = z.object({
     customerName: z.string().min(1),
@@ -984,22 +987,36 @@ router.delete('/:id', requireAuth, requirePermission('delete_orders'), async (re
 // ─── GET /api/orders/stats ────────────────────────
 router.get('/stats/summary', requireAuth, async (req: Request, res: Response) => {
     try {
+        const dateFrom = req.query.dateFrom as string || '';
+        const dateTo = req.query.dateTo as string || '';
         // Apply same agent visibility filter as the order list
         const permissions: string[] = req.session.permissions || [];
         const isAgent = !permissions.includes('view_all_orders');
         const agentFilter = isAgent ? 'AND assigned_to = $1' : '';
-        const params = isAgent ? [req.session.userId] : [];
+        const params: any[] = isAgent ? [req.session.userId] : [];
+        let idx = isAgent ? 2 : 1;
+        let dateFilter = '';
+        if (dateFrom) {
+            dateFilter += ` AND created_at >= $${idx}::date`;
+            params.push(dateFrom);
+            idx++;
+        }
+        if (dateTo) {
+            dateFilter += ` AND created_at < ($${idx}::date + interval '1 day')`;
+            params.push(dateTo);
+            idx++;
+        }
 
         const result = await query(`
       SELECT 
-        COUNT(*) FILTER (WHERE deleted_at IS NULL ${agentFilter}) as total_orders,
-        COUNT(*) FILTER (WHERE confirmation_status = 'pending' AND deleted_at IS NULL ${agentFilter}) as pending,
-        COUNT(*) FILTER (WHERE confirmation_status = 'confirmed' AND deleted_at IS NULL ${agentFilter}) as confirmed,
-        COUNT(*) FILTER (WHERE shipping_status = 'in_transit' AND deleted_at IS NULL ${agentFilter}) as in_transit,
-        COUNT(*) FILTER (WHERE ${deliveredCountCondition} AND deleted_at IS NULL ${agentFilter}) as delivered,
-        COUNT(*) FILTER (WHERE shipping_status = 'returned' AND deleted_at IS NULL ${agentFilter}) as returned,
-        COALESCE(SUM(final_amount) FILTER (WHERE ${deliveredCountCondition} AND deleted_at IS NULL ${agentFilter}), 0) as total_revenue,
-        COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE AND deleted_at IS NULL ${agentFilter}) as today_orders
+        COUNT(*) FILTER (WHERE deleted_at IS NULL ${agentFilter} ${dateFilter}) as total_orders,
+        COUNT(*) FILTER (WHERE confirmation_status = 'pending' AND deleted_at IS NULL ${agentFilter} ${dateFilter}) as pending,
+        COUNT(*) FILTER (WHERE confirmation_status = 'confirmed' AND deleted_at IS NULL ${agentFilter} ${dateFilter}) as confirmed,
+        COUNT(*) FILTER (WHERE shipping_status = 'in_transit' AND deleted_at IS NULL ${agentFilter} ${dateFilter}) as in_transit,
+        COUNT(*) FILTER (WHERE ${deliveredCountCondition} AND deleted_at IS NULL ${agentFilter} ${dateFilter}) as delivered,
+        COUNT(*) FILTER (WHERE shipping_status = 'returned' AND deleted_at IS NULL ${agentFilter} ${dateFilter}) as returned,
+        COALESCE(SUM(final_amount) FILTER (WHERE ${deliveredCountCondition} AND deleted_at IS NULL ${agentFilter} ${dateFilter}), 0) as total_revenue,
+        COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE AND deleted_at IS NULL ${agentFilter} ${dateFilter}) as today_orders
       FROM orders
     `, params);
 
@@ -1087,8 +1104,9 @@ router.get('/stats/dashboard', requireAuth, async (req: Request, res: Response) 
 router.get('/stats/revenue-trend', requireAuth, async (req: Request, res: Response) => {
     try {
         const { from, to, product_id, agent_id, city } = req.query as { from?: string; to?: string; product_id?: string; agent_id?: string; city?: string };
-        const dateTo = to || new Date().toISOString().split('T')[0];
-        const dateFrom = from || new Date().toISOString().split('T')[0];
+        const todayLocal = casablancaDate();
+        const dateTo = to || todayLocal;
+        const dateFrom = from || todayLocal;
 
         const joins: string[] = [];
         const wheres: string[] = [];
@@ -1519,7 +1537,7 @@ router.get('/stats/agent-dashboard', requireAuth, async (req: Request, res: Resp
         };
 
         const today = new Date();
-        const fmt = (d: Date) => d.toISOString().split('T')[0];
+        const fmt = (d: Date) => casablancaDate(d);
 
         // Yesterday
         const yesterday = new Date(today);
