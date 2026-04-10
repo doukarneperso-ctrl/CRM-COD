@@ -1528,8 +1528,8 @@ router.get('/stats/agent-dashboard', requireAuth, async (req: Request, res: Resp
                     COALESCE(SUM(CASE WHEN ${deliveredCountCondition} THEN final_amount ELSE 0 END), 0) as delivered_revenue
                  FROM orders
                  WHERE assigned_to = $1
-                   AND updated_at >= $2::date
-                   AND updated_at < ($3::date + interval '1 day')
+                   AND created_at >= $2::date
+                   AND created_at < ($3::date + interval '1 day')
                    AND deleted_at IS NULL`,
                 [agentId, fromDate, toDate]
             );
@@ -1645,8 +1645,11 @@ router.get('/stats/agent-dashboard', requireAuth, async (req: Request, res: Resp
 
         const calcRate = (stats: any) => {
             const total = parseInt(stats.total_orders) || 0;
+            const pending = parseInt(stats.pending) || 0;
             const confirmed = parseInt(stats.confirmed) || 0;
-            return total > 0 ? Math.round((confirmed / total) * 100) : 0;
+            const processed = Math.max(0, total - pending);
+            // Confirmation quality should be based on processed orders only.
+            return processed > 0 ? Math.round((confirmed / processed) * 100) : 0;
         };
 
         res.json({

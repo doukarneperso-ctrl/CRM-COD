@@ -56,7 +56,7 @@ const MiniStat = ({ label, value, sub, icon, color }: { label: string; value: st
 );
 
 // ─── Period card (Assigned / Confirmed) ───
-const PeriodCard = ({ label, total, confirmed, rate, color }: { label: string; total: number; confirmed: number; rate: number; color: string }) => (
+const PeriodCard = ({ label, total, confirmed, pending, rate, color }: { label: string; total: number; confirmed: number; pending: number; rate: number; color: string }) => (
     <div style={{
         background: T.bgInner, border: `1px solid ${T.border}`, borderRadius: 10,
         padding: '10px 12px', textAlign: 'center' as const, flex: '1 1 auto', minWidth: 110,
@@ -68,6 +68,9 @@ const PeriodCard = ({ label, total, confirmed, rate, color }: { label: string; t
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'baseline', gap: 4 }}>
             <span style={{ fontSize: 16, fontWeight: 700, color }}>{confirmed}</span>
             <span style={{ fontSize: 10, color: T.textDim }}>confirmed</span>
+        </div>
+        <div style={{ fontSize: 10, color: T.textDim, marginTop: 2 }}>
+            {pending} pending gap
         </div>
         <div style={{
             display: 'inline-block', marginTop: 4, padding: '1px 8px', borderRadius: 10,
@@ -169,10 +172,10 @@ export default function AgentDashboardPage() {
                     <Card style={cardStyle} styles={{ body: { padding: '14px 16px' } }}>
                         {sectionTitle('📊', 'Orders & Confirmation Rate')}
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            <PeriodCard label="Today" total={p(today.total_orders)} confirmed={p(today.confirmed)} rate={rates.today} color={rateColor(rates.today)} />
-                            <PeriodCard label="This Week" total={p(week.total_orders)} confirmed={p(week.confirmed)} rate={rates.week} color={rateColor(rates.week)} />
-                            <PeriodCard label="This Month" total={p(month.total_orders)} confirmed={p(month.confirmed)} rate={rates.month} color={rateColor(rates.month)} />
-                            <PeriodCard label="All Time" total={p(allTime.total_orders)} confirmed={p(allTime.confirmed)} rate={rates.allTime} color={rateColor(rates.allTime)} />
+                            <PeriodCard label="Today" total={p(today.total_orders)} confirmed={p(today.confirmed)} pending={p(today.pending)} rate={rates.today} color={rateColor(rates.today)} />
+                            <PeriodCard label="This Week" total={p(week.total_orders)} confirmed={p(week.confirmed)} pending={p(week.pending)} rate={rates.week} color={rateColor(rates.week)} />
+                            <PeriodCard label="This Month" total={p(month.total_orders)} confirmed={p(month.confirmed)} pending={p(month.pending)} rate={rates.month} color={rateColor(rates.month)} />
+                            <PeriodCard label="All Time" total={p(allTime.total_orders)} confirmed={p(allTime.confirmed)} pending={p(allTime.pending)} rate={rates.allTime} color={rateColor(rates.allTime)} />
                         </div>
                     </Card>
                 </Col>
