@@ -99,7 +99,10 @@ router.get('/commissions', requireAuth, async (req: Request, res: Response) => {
             `SELECT
                 COALESCE(SUM(amount) FILTER (WHERE status = 'paid'), 0) as commission_paid,
                 COALESCE(SUM(amount) FILTER (WHERE status IN ('new', 'approved')), 0) as commission_owed,
-                COALESCE(SUM(amount) FILTER (WHERE status = 'rejected' AND review_note ILIKE 'Auto-debt:%'), 0) as pending_deductions
+                COALESCE(SUM(amount) FILTER (WHERE status = 'rejected' AND review_note ILIKE 'Auto-debt:%'), 0) as pending_deductions,
+                (COALESCE(SUM(amount) FILTER (WHERE status = 'paid'), 0)
+                 + COALESCE(SUM(amount) FILTER (WHERE status IN ('new', 'approved')), 0)
+                 - COALESCE(SUM(amount) FILTER (WHERE status = 'rejected' AND review_note ILIKE 'Auto-debt:%'), 0)) as total_earned
             FROM commissions c
             LEFT JOIN orders o ON o.id = c.order_id
             WHERE c.agent_id = $1

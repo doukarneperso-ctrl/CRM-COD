@@ -1590,7 +1590,9 @@ router.get('/stats/agent-dashboard', requireAuth, async (req: Request, res: Resp
                 COALESCE(SUM(amount) FILTER (WHERE status = 'paid'), 0) as paid,
                 COALESCE(SUM(amount) FILTER (WHERE status IN ('approved', 'new')), 0) as pending_comm,
                 COALESCE(SUM(amount) FILTER (WHERE status = 'rejected' AND review_note ILIKE 'Auto-debt:%'), 0) as deducted,
-                COALESCE(SUM(amount), 0) as total,
+                (COALESCE(SUM(amount) FILTER (WHERE status = 'paid'), 0)
+                 + COALESCE(SUM(amount) FILTER (WHERE status IN ('approved', 'new')), 0)
+                 - COALESCE(SUM(amount) FILTER (WHERE status = 'rejected' AND review_note ILIKE 'Auto-debt:%'), 0)) as total,
                 COUNT(*) FILTER (WHERE status IN ('approved', 'new')) as pending_count
              FROM commissions
              WHERE agent_id = $1 AND deleted_at IS NULL`,
