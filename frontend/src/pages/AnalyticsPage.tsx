@@ -164,7 +164,9 @@ export default function AnalyticsPage() {
         {
             title: 'DELIVERY %', key: 'rate', width: 100,
             render: (_: any, r: any) => {
-                const rate = r.total_orders > 0 ? ((r.delivered / r.total_orders) * 100).toFixed(1) : 0;
+                const confirmed = parseInt(r.confirmed || 0);
+                const delivered = parseInt(r.delivered || 0);
+                const rate = confirmed > 0 ? ((delivered / confirmed) * 100).toFixed(1) : 0;
                 return <Text style={{ fontSize: 12, fontWeight: 600 }}>{rate}%</Text>;
             },
         },

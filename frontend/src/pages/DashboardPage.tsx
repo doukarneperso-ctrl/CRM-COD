@@ -128,22 +128,26 @@ export default function DashboardPage() {
     }));
 
     const totalOrders = parseInt(cur.total_orders) || 0;
+    const pending = parseInt(cur.pending) || 0;
     const confirmed = parseInt(cur.confirmed) || 0;
     const delivered = parseInt(cur.delivered) || 0;
     const returned = parseInt(cur.returned) || 0;
     const revenue = parseFloat(cur.total_revenue) || 0;
-    const confirmRate = totalOrders > 0 ? Math.round((confirmed / totalOrders) * 100) : 0;
+    const processedOrders = Math.max(0, totalOrders - pending);
+    const confirmRate = processedOrders > 0 ? Math.round((confirmed / processedOrders) * 100) : 0;
     const deliveryRate = confirmed > 0 ? Math.round((delivered / confirmed) * 100) : 0;
-    const returnRate = (delivered + returned) > 0 ? Math.round((returned / (delivered + returned)) * 100) : 0;
+    const returnRate = confirmed > 0 ? Math.round((returned / confirmed) * 100) : 0;
 
     const prevTotal = parseInt(prev.total_orders) || 0;
+    const prevPending = parseInt(prev.pending) || 0;
     const prevConfirmed = parseInt(prev.confirmed) || 0;
     const prevDelivered = parseInt(prev.delivered) || 0;
     const prevReturned = parseInt(prev.returned) || 0;
     const prevRevenue = parseFloat(prev.total_revenue) || 0;
-    const prevConfirmRate = prevTotal > 0 ? Math.round((prevConfirmed / prevTotal) * 100) : 0;
+    const prevProcessed = Math.max(0, prevTotal - prevPending);
+    const prevConfirmRate = prevProcessed > 0 ? Math.round((prevConfirmed / prevProcessed) * 100) : 0;
     const prevDeliveryRate = prevConfirmed > 0 ? Math.round((prevDelivered / prevConfirmed) * 100) : 0;
-    const prevReturnRate = (prevDelivered + prevReturned) > 0 ? Math.round((prevReturned / (prevDelivered + prevReturned)) * 100) : 0;
+    const prevReturnRate = prevConfirmed > 0 ? Math.round((prevReturned / prevConfirmed) * 100) : 0;
 
     // Chart data formatting
     const chartData = revenueTrend.map((d: any) => ({
@@ -404,7 +408,7 @@ export default function DashboardPage() {
                                                 {i + 1}. {c.city}
                                             </div>
                                             <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>
-                                                {c.delivered} delivered · {c.total_orders} total
+                                                {c.delivered} delivered · {c.confirmed} confirmed
                                             </div>
                                         </div>
                                         <Tag color={parseFloat(c.delivery_rate) >= 80 ? '#52c41a' : parseFloat(c.delivery_rate) >= 50 ? '#faad14' : '#ff4d4f'}

@@ -1072,6 +1072,7 @@ router.get('/stats/dashboard', requireAuth, async (req: Request, res: Response) 
             prev_period AS (
                 SELECT 
                     COUNT(DISTINCT orders.id) FILTER (WHERE orders.deleted_at IS NULL) as total_orders,
+                    COUNT(DISTINCT orders.id) FILTER (WHERE orders.confirmation_status = 'pending' AND orders.deleted_at IS NULL) as pending,
                     COUNT(DISTINCT orders.id) FILTER (WHERE orders.confirmation_status = 'confirmed' AND orders.deleted_at IS NULL) as confirmed,
                     COUNT(DISTINCT orders.id) FILTER (WHERE ${deliveredCountCondition} AND orders.deleted_at IS NULL) as delivered,
                     COUNT(DISTINCT orders.id) FILTER (WHERE orders.shipping_status = 'returned' AND orders.deleted_at IS NULL) as returned,
@@ -1199,11 +1200,12 @@ router.get('/stats/top-cities', requireAuth, async (req: Request, res: Response)
             SELECT 
                 c.city,
                 COUNT(DISTINCT o.id) as total_orders,
+                COUNT(DISTINCT o.id) FILTER (WHERE o.confirmation_status = 'confirmed') as confirmed,
                 COUNT(DISTINCT o.id) FILTER (WHERE ${deliveredCountCondition}) as delivered,
                 COUNT(DISTINCT o.id) FILTER (WHERE o.shipping_status = 'returned') as returned,
                 ROUND(
                     COUNT(DISTINCT o.id) FILTER (WHERE ${deliveredCountCondition})::numeric / 
-                    NULLIF(COUNT(DISTINCT o.id), 0) * 100, 1
+                    NULLIF(COUNT(DISTINCT o.id) FILTER (WHERE o.confirmation_status = 'confirmed'), 0) * 100, 1
                 ) as delivery_rate
             FROM orders o
             JOIN customers c ON o.customer_id = c.id

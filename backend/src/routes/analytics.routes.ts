@@ -55,6 +55,7 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
             query(
                 `SELECT
                     COUNT(*) as total_orders,
+                    COUNT(*) FILTER (WHERE confirmation_status = 'pending') as pending_orders,
                     COUNT(*) FILTER (WHERE confirmation_status = 'confirmed') as confirmed_orders,
                     COUNT(*) FILTER (WHERE ${deliveredCountCondition}) as delivered_orders,
                     COUNT(*) FILTER (WHERE shipping_status = 'returned') as returned_orders,
@@ -73,8 +74,10 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
         ]);
 
         const kpi = kpiResult.rows[0];
-        const confirmRate = kpi.total_orders > 0
-            ? ((kpi.confirmed_orders / kpi.total_orders) * 100).toFixed(1)
+        const pendingOrders = parseInt(kpi.pending_orders || '0');
+        const processedOrders = Math.max(0, parseInt(kpi.total_orders || '0') - pendingOrders);
+        const confirmRate = processedOrders > 0
+            ? ((kpi.confirmed_orders / processedOrders) * 100).toFixed(1)
             : 0;
         const deliveryRate = kpi.confirmed_orders > 0
             ? ((kpi.delivered_orders / kpi.confirmed_orders) * 100).toFixed(1)
@@ -88,6 +91,7 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
             data: {
                 kpis: {
                     ...kpi,
+                    processed_orders: processedOrders,
                     confirmation_rate: confirmRate,
                     delivery_rate: deliveryRate,
                     return_rate: returnRate,
@@ -144,6 +148,7 @@ router.get('/cities', requireAuth, async (req: Request, res: Response) => {
             `SELECT
                 COALESCE(o.city, 'Unknown') as city,
                 COUNT(*) as total_orders,
+                COUNT(*) FILTER (WHERE o.confirmation_status = 'confirmed') as confirmed,
                 COUNT(*) FILTER (WHERE ${deliveredCountCondition}) as delivered,
                 COUNT(*) FILTER (WHERE o.shipping_status = 'returned') as returned,
                 COALESCE(SUM(o.final_amount) FILTER (WHERE ${deliveredCountCondition}), 0) as revenue
@@ -202,12 +207,13 @@ router.get('/agents', requireAuth, async (req: Request, res: Response) => {
             `SELECT
                 u.id, u.full_name AS agent,
                 COUNT(o.id) as total_orders,
+                COUNT(o.id) FILTER (WHERE o.confirmation_status = 'pending') as pending,
                 COUNT(o.id) FILTER (WHERE o.confirmation_status = 'confirmed') as confirmed,
                 COUNT(o.id) FILTER (WHERE ${deliveredCountCondition}) as delivered,
                 COUNT(o.id) FILTER (WHERE o.shipping_status = 'returned') as returned,
                 COALESCE(SUM(o.final_amount) FILTER (WHERE ${deliveredCountCondition}), 0) as revenue,
                 ROUND(COUNT(o.id) FILTER (WHERE o.confirmation_status = 'confirmed')::numeric /
-                      NULLIF(COUNT(o.id), 0) * 100, 1) as confirmation_rate,
+                      NULLIF((COUNT(o.id) - COUNT(o.id) FILTER (WHERE o.confirmation_status = 'pending')), 0) * 100, 1) as confirmation_rate,
                 COALESCE(SUM(c.amount) FILTER (WHERE c.status = 'paid'), 0) as commissions_earned
              FROM orders o
              JOIN users u ON u.id = o.assigned_to
