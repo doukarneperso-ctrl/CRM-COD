@@ -164,7 +164,7 @@ router.get('/search', requireAuth, async (req: Request, res: Response) => {
 // ─── POST /api/returns/:orderId/verify ────────────
 router.post('/:orderId/verify', requireAuth, requirePermission('update_order_status'), validateBody(verifyReturnSchema), async (req: Request, res: Response) => {
     try {
-        const { orderId } = req.params;
+        const orderId = req.params.orderId as string;
         const { result: verifyResult, note } = req.body;
 
         // 1. Check order exists
