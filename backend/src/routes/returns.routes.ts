@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth';
 import { requirePermission } from '../middleware/permission';
 import { validateBody } from '../middleware/validate';
 import { createAuditLog } from '../services/audit.service';
+import { restoreStock } from '../services/stock.service';
 import { parsePagination, paginationMeta, paginationSQL } from '../utils/pagination';
 import logger from '../utils/logger';
 import { z } from 'zod';
@@ -92,7 +93,8 @@ router.get('/', requireAuth, requirePermission('view_orders'), async (req: Reque
                             'productName', p.name,
                             'size', pv.size,
                             'color', pv.color,
-                            'quantity', oi.quantity
+                            'quantity', oi.quantity,
+                            'variantId', pv.id
                         ) ORDER BY oi.created_at
                     ) FILTER (WHERE oi.id IS NOT NULL), '[]') as items
                 FROM orders o
@@ -165,8 +167,9 @@ router.post('/:orderId/verify', requireAuth, requirePermission('update_order_sta
         const { orderId } = req.params;
         const { result: verifyResult, note } = req.body;
 
+        // 1. Check order exists
         const orderCheck = await query(
-            `SELECT o.id, o.order_number, o.shipping_status
+            `SELECT o.id, o.order_number, o.shipping_status, o.return_verified_at
              FROM orders o WHERE o.id = $1 AND o.deleted_at IS NULL`,
             [orderId]
         );
@@ -176,40 +179,32 @@ router.post('/:orderId/verify', requireAuth, requirePermission('update_order_sta
         }
 
         const order = orderCheck.rows[0];
+
+        // 2. Validate order is in returned status
         if (order.shipping_status !== 'returned') {
-            res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Order is not in returned status' } });
+            res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Order ${order.order_number} is not in returned status (current: ${order.shipping_status})` } });
             return;
         }
 
+        // 3. Check not already verified
+        if (order.return_verified_at) {
+            res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Order ${order.order_number} has already been verified` } });
+            return;
+        }
+
+        // 4. Mark return as verified (without return_verified_by — column doesn't exist in schema)
         await transaction(async (client) => {
-            // Mark return as verified
             await client.query(
                 `UPDATE orders SET
                     return_verified_at = NOW(),
-                    return_verified_by = $1,
-                    return_result = $2,
-                    return_note = $3,
+                    return_result = $1,
+                    return_note = $2,
                     updated_at = NOW()
-                 WHERE id = $4`,
-                [req.session.userId, verifyResult, note || null, orderId]
+                 WHERE id = $3`,
+                [verifyResult, note || null, orderId]
             );
 
-            // Restore stock for OK returns
-            if (verifyResult === 'ok') {
-                const items = await client.query(
-                    `SELECT oi.variant_id, oi.quantity
-                     FROM order_items oi WHERE oi.order_id = $1`,
-                    [orderId]
-                );
-                for (const item of items.rows) {
-                    await client.query(
-                        `UPDATE product_variants SET stock = stock + $1, updated_at = NOW() WHERE id = $2`,
-                        [item.quantity, item.variant_id]
-                    );
-                }
-            }
-
-            // Log to status history
+            // 5. Log to status history
             await client.query(
                 `INSERT INTO status_history (order_id, field, old_value, new_value, changed_by, note)
                  VALUES ($1, 'return_result', NULL, $2, $3, $4)`,
@@ -217,13 +212,42 @@ router.post('/:orderId/verify', requireAuth, requirePermission('update_order_sta
             );
         });
 
+        // 6. Restore stock for OK returns — use the atomic restoreStock service
+        //    (runs outside the main transaction with its own SELECT FOR UPDATE locking)
+        let stockRestoredCount = 0;
+        if (verifyResult === 'ok') {
+            const items = await query(
+                `SELECT oi.variant_id, oi.quantity
+                 FROM order_items oi WHERE oi.order_id = $1 AND oi.variant_id IS NOT NULL`,
+                [orderId]
+            );
+            for (const item of items.rows) {
+                try {
+                    await restoreStock(
+                        item.variant_id,
+                        item.quantity,
+                        orderId,
+                        'return_verified_ok',
+                        req.session.userId
+                    );
+                    stockRestoredCount += item.quantity;
+                } catch (stockErr) {
+                    logger.error(`Failed to restore stock for variant ${item.variant_id} on order ${orderId}:`, stockErr);
+                    // Don't fail the whole verification if a single variant restore fails
+                }
+            }
+            logger.info(`Stock restored: ${stockRestoredCount} units across ${items.rows.length} variants for order ${order.order_number}`);
+        }
+
+        // 7. Audit log
         await createAuditLog({
             tableName: 'orders', recordId: String(orderId),
             action: 'update', userId: req.session.userId!,
-            details: `Return verified (${verifyResult}) for order ${order.order_number}${note ? ': ' + note : ''}`,
+            details: `Return verified (${verifyResult}) for order ${order.order_number}${verifyResult === 'ok' ? ` — ${stockRestoredCount} units restocked` : ''}${note ? ': ' + note : ''}`,
         });
 
-        res.json({ success: true, message: `Return verified as ${verifyResult}` });
+        const resultLabel = verifyResult === 'ok' ? 'OK — stock restored' : verifyResult.replace('_', ' ');
+        res.json({ success: true, message: `Return verified as: ${resultLabel}` });
     } catch (error) {
         logger.error('Verify return error:', error);
         res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to verify return' } });

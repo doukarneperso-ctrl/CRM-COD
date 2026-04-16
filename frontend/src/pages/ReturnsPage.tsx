@@ -106,8 +106,8 @@ export default function ReturnsPage() {
         if (!verifyOrder) return;
         setVerifyLoading(true);
         try {
-            await api.post(`/returns/${verifyOrder.id}/verify`, { result: verifyResult, note: verifyNote });
-            message.success(`Return verified as: ${verifyResult.replace('_', ' ')}`);
+            const res = await api.post(`/returns/${verifyOrder.id}/verify`, { result: verifyResult, note: verifyNote });
+            message.success(res.data?.message || `Return verified as: ${verifyResult.replace('_', ' ')}`);
             setVerifyOrder(null);
             setVerifyResult('ok');
             setVerifyNote('');
@@ -307,6 +307,20 @@ export default function ReturnsPage() {
                             <Descriptions.Item label="Courier">{verifyOrder.courier_name || '—'}</Descriptions.Item>
                             <Descriptions.Item label="Tracking">{verifyOrder.tracking_number || '—'}</Descriptions.Item>
                         </Descriptions>
+
+                        {/* Show order items */}
+                        {verifyOrder.items && Array.isArray(verifyOrder.items) && verifyOrder.items.length > 0 && (
+                            <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fafafa', borderRadius: 6, border: '1px solid #f0f0f0' }}>
+                                <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>📦 Order Items:</Text>
+                                {verifyOrder.items.map((item: any, idx: number) => (
+                                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}>
+                                        <span>{item.productName} {item.size ? `(${item.size})` : ''} {item.color ? `— ${item.color}` : ''}</span>
+                                        <span style={{ fontWeight: 600 }}>×{item.quantity}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                         <Text strong>Inspection Result:</Text>
                         <div style={{ marginTop: 8, marginBottom: 12 }}>
                             {RESULT_OPTIONS.map(opt => (
@@ -325,6 +339,14 @@ export default function ReturnsPage() {
                                 </Card>
                             ))}
                         </div>
+
+                        {/* Stock restoration notice */}
+                        {verifyResult === 'ok' && verifyOrder.items && verifyOrder.items.length > 0 && (
+                            <div style={{ padding: '8px 12px', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 6, marginBottom: 12, fontSize: 12 }}>
+                                ✅ <strong>Stock will be restored</strong> — {verifyOrder.items.reduce((sum: number, it: any) => sum + (it.quantity || 0), 0)} unit(s) will be added back to inventory.
+                            </div>
+                        )}
+
                         <Text style={{ fontSize: 12 }}>Notes (optional):</Text>
                         <Input.TextArea
                             rows={2} style={{ marginTop: 4 }}
